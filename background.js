@@ -2,23 +2,26 @@
 // All models powered by NEAR AI Cloud (cloud.near.ai)
 
 const NEAR_AI_ENDPOINT = 'https://cloud-api.near.ai/v1/chat/completions';
-const API_TIMEOUT = 30000;
+const API_TIMEOUT = 45000; // Increased for vision processing
 
 const AI_MODELS = {
     'deepseek': {
         name: 'DeepSeek V3.1',
         model: 'deepseek-ai/DeepSeek-V3.1',
-        description: '128K context • $1.05/M input • Cheapest'
+        description: '128K context • $1.05/M input • Cheapest',
+        vision: false
     },
     'openai': {
         name: 'OpenAI GPT-5.2',
         model: 'openai/gpt-5.2',
-        description: '400K context • $1.8/M input • Deep reasoning'
+        description: '400K context • $1.8/M input • Vision enabled',
+        vision: true
     },
     'claude': {
         name: 'Claude Sonnet 4.5',
         model: 'anthropic/claude-sonnet-4-5',
-        description: '200K context • $3/M input • Best quality'
+        description: '200K context • $3/M input • Best vision',
+        vision: true
     }
 };
 
@@ -79,7 +82,8 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
                     const comment = await generateComment(
                         request.postContent,
                         request.style,
-                        request.customPrompt
+                        request.customPrompt,
+                        request.imageUrls // NEW: Pass image URLs
                     );
                     sendResponse({ success: true, comment });
                     break;
@@ -155,7 +159,6 @@ async function updateStats(statType, style) {
 }
 
 async function testApiConnection(apiKey) {
-    // Clean key
     const cleanedKey = apiKey ? apiKey.replace(/[<>\s]/g, '') : '';
 
     if (!cleanedKey) {
@@ -192,12 +195,12 @@ async function testApiConnection(apiKey) {
     }
 }
 
-async function generateComment(postContent, style, customPrompt = '') {
+async function generateComment(postContent, style, customPrompt = '', imageUrls = []) {
     const settings = await getSettings();
     const modelKey = settings.selectedModel || 'deepseek';
     const modelConfig = AI_MODELS[modelKey];
 
-    // Clean API key (remove < > and whitespace)
+    // Clean API key
     let apiKey = settings.apiKey ? settings.apiKey.replace(/[<>\s]/g, '') : '';
 
     if (!apiKey) {
@@ -214,26 +217,64 @@ async function generateComment(postContent, style, customPrompt = '') {
 
     const globalInstructions = settings.instructions ? `\nAdditional Instructions: ${settings.instructions}` : '';
 
-    const systemPrompt = `You are an Instagram comment assistant. Your goal is to generate a relevant and engaging comment.
+    // Determine if we should use vision
+    const useVision = modelConfig.vision && imageUrls && imageUrls.length > 0;
 
-CRITICAL RULES:
-- Length: Natural and appropriate for the context (can be short or long).
+    const systemPrompt = `You are an Instagram comment assistant. Generate a relevant and engaging comment.
+
+ABSOLUTE RULES:
+- NEVER ask the user for images, uploads, or more information.
+- NEVER say you cannot see the image or need more context.
+- ALWAYS generate a comment based on whatever context is provided.
+- If visual details are missing, use the caption/author info creatively.
+- Length: Natural for the context.
 - Do NOT summarize the post.
-- Do NOT sound like a bot. Be casual and human.
-- React directly to the visual element or the sentiment.
+- Be casual and human, not robotic.
+- React directly to what's described or shown.
+${useVision ? '- If you can see the image: reference specific visual elements or text in it.' : ''}
 - No hashtags unless asked.
 - No emoji overload.
-- No generic praise ("Great shot!", "Nice!"). Be specific to the content.
+- No generic praise ("Great shot!", "Nice!"). Be specific.
 - Do NOT use em dashes (—).
 
 Style: ${stylePrompt}${globalInstructions}`;
 
-    const userPrompt = `Context (Author & Caption & Image tags):
+    // Build user message content
+    let userMessageContent;
+
+    if (useVision) {
+        // Vision-enabled format: array of text and image_url objects
+        console.log('AI Comment: Using VISION mode with', imageUrls.length, 'image(s)');
+
+        userMessageContent = [
+            {
+                type: 'text',
+                text: `Context (Author & Caption):
+${postContent}
+
+Task: Look at the image carefully. Read any text, memes, quotes, or messages visible in it. Write a comment that reacts specifically to what you see.`
+            }
+        ];
+
+        // Add images
+        for (const url of imageUrls) {
+            userMessageContent.push({
+                type: 'image_url',
+                image_url: {
+                    url: url,
+                    detail: 'auto' // Let the model decide resolution
+                }
+            });
+        }
+    } else {
+        // Text-only format
+        userMessageContent = `Context (Author & Caption & Image tags):
 ${postContent}
 
 Task: Write a comment. Matches the context/vibe.`;
+    }
 
-    console.log('Calling NEAR AI Cloud:', modelConfig.model);
+    console.log('Calling NEAR AI Cloud:', modelConfig.model, useVision ? '(Vision)' : '(Text-only)');
 
     try {
         const response = await fetchWithTimeout(NEAR_AI_ENDPOINT, {
@@ -246,9 +287,9 @@ Task: Write a comment. Matches the context/vibe.`;
                 model: modelConfig.model,
                 messages: [
                     { role: 'system', content: systemPrompt },
-                    { role: 'user', content: userPrompt }
+                    { role: 'user', content: userMessageContent }
                 ],
-                max_tokens: 150,
+                max_tokens: 200,
                 temperature: 0.8
             })
         }, API_TIMEOUT);
