@@ -6,7 +6,6 @@
     let currentPost = null;
     let settings = null;
     let isProcessing = false;
-    let extensionValid = true;
 
     init();
 
@@ -23,8 +22,7 @@
                 }
             });
         } catch (e) {
-            extensionValid = false;
-            console.error('AI Comment: Extension context invalid', e);
+            // Context invalid
         }
     }
 
@@ -38,20 +36,22 @@
     }
 
     async function loadSettings() {
-        try {
-            return new Promise((resolve) => {
-                if (!isExtensionValid()) {
-                    resolve();
-                    return;
-                }
+        if (!isExtensionValid()) return;
+
+        return new Promise((resolve) => {
+            try {
                 chrome.runtime.sendMessage({ action: 'getSettings' }, (response) => {
+                    if (chrome.runtime.lastError) {
+                        resolve();
+                        return;
+                    }
                     settings = response?.settings || { defaultStyle: 'friendly' };
                     resolve();
                 });
-            });
-        } catch (e) {
-            console.log('AI Comment: Settings load failed (context invalid)');
-        }
+            } catch (e) {
+                resolve();
+            }
+        });
     }
 
     function observeDOM() {
@@ -373,10 +373,8 @@
         }
 
         if (postBtn) {
-            // Check if disabled - sometimes it's a div without disabled attr but style changes
             if (postBtn.disabled || postBtn.style.opacity < '0.5') {
                 showToast('Post button disabled - typing failed?', 'warning');
-                // Try one last force update
                 input.dispatchEvent(new InputEvent('input', { inputType: 'insertText', data: ' ', bubbles: true }));
             }
 
@@ -431,27 +429,20 @@
     }
 
     function findPostButton() {
-        // Look for buttons OR divs with role="button" that have text "Post"
         const potentialButtons = document.querySelectorAll('div[role="dialog"] [role="button"], div[role="dialog"] button, form button');
-
         for (const btn of potentialButtons) {
             const text = btn.textContent.trim().toLowerCase();
             if (text === 'post') {
                 return btn;
             }
         }
-        return null; // Fallback
+        return null;
     }
 
     function closeModal() {
-        // Method 1: Click Close button if found
-        const closeBtn = document.querySelector('[aria-label="Close"]') ||
-            document.querySelector('svg[aria-label="Close"]')?.parentElement;
-        if (closeBtn) {
-            closeBtn.click();
-        }
+        console.log('AI Comment: Closing modal...');
 
-        // Method 2: Simulate Escape key (works for most Instagram modals)
+        // Method 1: Simulate Escape key (Primary request)
         const escEvent = new KeyboardEvent('keydown', {
             key: 'Escape',
             code: 'Escape',
@@ -463,12 +454,25 @@
         });
         document.dispatchEvent(escEvent);
 
-        // Method 3: Click outside (backdrop)
-        const backdrop = document.querySelector('div[role="presentation"] > div > div');
-        if (backdrop) {
-            // Try clicking the backdrop
-            backdrop.click();
-        }
+        // Method 2: Click Close button if found (Safe backup)
+        setTimeout(() => {
+            const closeBtn = document.querySelector('[aria-label="Close"]') ||
+                document.querySelector('svg[aria-label="Close"]')?.closest('[role="button"]') ||
+                document.querySelector('svg[aria-label="Close"]')?.parentElement;
+
+            if (closeBtn) {
+                if (typeof closeBtn.click === 'function') {
+                    closeBtn.click();
+                } else {
+                    const clickEvent = new MouseEvent('click', {
+                        view: window,
+                        bubbles: true,
+                        cancelable: true
+                    });
+                    closeBtn.dispatchEvent(clickEvent);
+                }
+            }
+        }, 200);
     }
 
     function waitForElement(selector, timeout = 3000) {
