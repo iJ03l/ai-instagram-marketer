@@ -80,6 +80,9 @@ function setupEventListeners() {
 
     // Reset stats
     document.getElementById('resetStats').addEventListener('click', resetStats);
+
+    // Autonomous Mode
+    document.getElementById('autoToggleBtn').addEventListener('click', toggleAutoPilot);
 }
 
 function toggleApiKeyVisibility() {
@@ -107,6 +110,9 @@ async function saveSettings() {
     const instructions = document.getElementById('instructions').value.trim();
     const customPrompt = document.getElementById('customPrompt').value.trim();
 
+    // Save Auto Settings too
+    const postLimit = parseInt(document.getElementById('postLimit').value) || 20;
+
     if (!apiKey) {
         showStatus('Please enter your NEAR AI API key', 'error');
         return;
@@ -117,13 +123,81 @@ async function saveSettings() {
         apiKey: apiKey,
         defaultStyle: defaultStyle,
         instructions: instructions,
-        customPrompt: customPrompt
+        customPrompt: customPrompt,
+        postLimit: postLimit
     };
 
     await chrome.storage.local.set({ settings });
 
     showStatus('✅ Settings saved!', 'success');
 }
+
+async function toggleAutoPilot() {
+    const btn = document.getElementById('autoToggleBtn');
+    const statusEl = document.getElementById('autoStatus');
+    const limitInput = document.getElementById('postLimit');
+
+    const isRunning = btn.classList.contains('stop');
+    const action = isRunning ? 'stopAutoPilot' : 'startAutoPilot';
+
+    // Save settings first if starting
+    if (!isRunning) await saveSettings();
+
+    const limit = parseInt(limitInput.value) || 20;
+
+    chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
+        if (!tabs[0]?.id) {
+            showStatus('Detailed error: No active tab found', 'error');
+            return;
+        }
+
+        chrome.tabs.sendMessage(tabs[0].id, {
+            action: action,
+            limit: limit
+        }, (response) => {
+            if (chrome.runtime.lastError) {
+                showStatus('Refresh the page first!', 'error');
+                return;
+            }
+
+            if (response && response.success) {
+                if (!isRunning) {
+                    btn.textContent = 'Stop Auto-Pilot';
+                    btn.classList.add('stop');
+                    statusEl.textContent = 'RUNNING';
+                    statusEl.classList.add('running');
+                    limitInput.disabled = true;
+                } else {
+                    btn.textContent = 'Start Auto-Pilot';
+                    btn.classList.remove('stop');
+                    statusEl.textContent = 'Stopped';
+                    statusEl.classList.remove('running');
+                    limitInput.disabled = false;
+                }
+            }
+        });
+    });
+}
+
+// Check status on load
+chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
+    if (tabs[0]?.id) {
+        chrome.tabs.sendMessage(tabs[0].id, { action: 'getAutoStatus' }, (response) => {
+            if (response && response.isRunning) {
+                const btn = document.getElementById('autoToggleBtn');
+                const statusEl = document.getElementById('autoStatus');
+                const limitInput = document.getElementById('postLimit');
+
+                btn.textContent = 'Stop Auto-Pilot';
+                btn.classList.add('stop');
+                statusEl.textContent = 'RUNNING';
+                statusEl.classList.add('running');
+                limitInput.disabled = true;
+                if (response.limit) limitInput.value = response.limit;
+            }
+        });
+    }
+});
 
 async function testConnection() {
     const apiKey = document.getElementById('apiKey').value.trim();
@@ -177,3 +251,4 @@ function showStatus(message, type) {
         statusEl.className = 'status-message';
     }, 3000);
 }
+

@@ -15,17 +15,135 @@
         observeDOM();
         setTimeout(injectButtons, 1000);
         setInterval(injectButtons, 1500);
+    }
 
-        try {
-            chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
-                if (request.action === 'triggerGenerate') {
-                    handleKeyboardShortcut();
+    // --- AUTONOMOUS MODE ---
+    let isAutoPilot = false;
+    let autoLimit = 20;
+    let autoCount = 0;
+
+    function startAutoPilot(limit) {
+        if (isAutoPilot) return;
+        isAutoPilot = true;
+        autoLimit = limit || 20;
+        autoCount = 0;
+        showToast(`🚀 Auto-Pilot Started! Target: ${autoLimit} posts`, 'success');
+        autoPilotLoop();
+    }
+
+    function stopAutoPilot() {
+        isAutoPilot = false;
+        showToast('🛑 Auto-Pilot Stopped', 'warning');
+    }
+
+    // New Message Handler for Popup
+    chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
+        if (request.action === 'triggerGenerate') {
+            handleKeyboardShortcut();
+        } else if (request.action === 'startAutoPilot') {
+            startAutoPilot(request.limit);
+            sendResponse({ success: true });
+        } else if (request.action === 'stopAutoPilot') {
+            stopAutoPilot();
+            sendResponse({ success: true });
+        } else if (request.action === 'getAutoStatus') {
+            sendResponse({ isRunning: isAutoPilot, limit: autoLimit, count: autoCount });
+        }
+    });
+
+    async function autoPilotLoop() {
+        while (isAutoPilot && autoCount < autoLimit) {
+            // 1. Find target post
+            const posts = Array.from(document.querySelectorAll('article'));
+            let targetPost = null;
+
+            // Find first visible post that hasn't been commented
+            for (const post of posts) {
+                if (!post.dataset.aiCommented && isElementVisible(post)) {
+                    targetPost = post;
+                    break;
                 }
-            });
-        } catch (e) {
-            // Context invalid
+            }
+
+            // If no visible target, try scrolling to next unprocessed
+            if (!targetPost) {
+                console.log('AI Auto: No visible target, searching...');
+                for (const post of posts) {
+                    if (!post.dataset.aiCommented) {
+                        targetPost = post;
+                        // Scroll it into view
+                        post.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                        await sleep(2000); // Wait for scroll
+                        break;
+                    }
+                }
+            }
+
+            // If still no target, just scroll down blindly
+            if (!targetPost) {
+                console.log('AI Auto: Scrolling down for new posts...');
+                window.scrollBy({ top: 800, behavior: 'smooth' });
+                await sleep(3000);
+                continue; // Retry loop
+            }
+
+            // 2. Process Target
+            console.log(`AI Auto: Processing post ${autoCount + 1}/${autoLimit}`);
+
+            // Highlight for user
+            targetPost.style.border = '2px solid #3b82f6';
+
+            // Generate (reuse existing safe logic)
+            // We need to wait for generate + post to complete.
+            // handleGenerateClick is async but returns early. 
+            // We'll wrap it or just wait on isProcessing flag.
+
+            handleGenerateClick(targetPost);
+
+            // Wait for processing to start
+            await sleep(1000);
+
+            // Wait for processing to finish
+            const maxWait = 45000; // 45s max per post
+            let waited = 0;
+            while (isProcessing && waited < maxWait && isAutoPilot) {
+                await sleep(1000);
+                waited += 1000;
+            }
+
+            // Remove highlight
+            targetPost.style.border = 'none';
+
+            if (!isAutoPilot) break;
+
+            // Check if successful (dataset.aiCommented should be set in postCommentInModal)
+            if (targetPost.dataset.aiCommented) {
+                autoCount++;
+                showToast(`Auto-Pilot: ${autoCount}/${autoLimit} posted`, 'success');
+            } else {
+                console.warn('AI Auto: Post failed or skipped');
+                // Mark as skipped/commented so we don't retry forever
+                targetPost.dataset.aiCommented = 'skipped';
+            }
+
+            // 3. Random Delay (Human-like)
+            if (autoCount < autoLimit) {
+                const delay = 4000 + Math.random() * 5000; // 4-9s
+                console.log(`AI Auto: Waiting ${Math.round(delay / 1000)}s...`);
+                await sleep(delay);
+            }
+        }
+
+        if (isAutoPilot && autoCount >= autoLimit) {
+            isAutoPilot = false;
+            showToast('🎉 Auto-Pilot Task Complete!', 'success');
+            // Optional: Refresh if requested
+            // window.location.reload(); 
         }
     }
+
+    // End of Auto Pilot Logic
+    // Continue with helper functions...
 
     function isExtensionValid() {
         try {
@@ -418,6 +536,12 @@
                 chrome.runtime.sendMessage({ action: 'updateStats', statType: 'posted' });
             }
             showToast('✅ Comment posted!', 'success');
+
+            // Mark as commented for Auto-Pilot
+            if (currentPost) {
+                currentPost.dataset.aiCommented = 'true';
+            }
+
             setTimeout(() => closeModal(startUrl), 1500);
 
         } else {
@@ -431,79 +555,84 @@
     async function simulateTyping(element, text) {
         element.focus();
 
-        // For contenteditable (Instagram's comment box), use clipboard approach
+        // Method 1: Clipboard API (Fastest/Best for React)
+        // Works well in manual mode, but often fails in autonomous mode (no user gesture)
+        let clipboardSuccess = false;
         if (element.contentEditable === 'true' || element.getAttribute('contenteditable') === 'true') {
             try {
                 // Clear first
                 element.innerHTML = '';
 
-                // Use clipboard API if available (most reliable for React)
                 if (navigator.clipboard && navigator.clipboard.writeText) {
                     await navigator.clipboard.writeText(text);
-
-                    // Trigger paste
                     element.focus();
-                    const pasteResult = document.execCommand('paste');
-
-                    if (!pasteResult) {
-                        // Fallback: direct insertion
-                        element.innerText = text;
-                    }
-                } else {
-                    // No clipboard API, use direct insertion
-                    element.innerText = text;
+                    clipboardSuccess = document.execCommand('paste');
                 }
-
-                // Dispatch events to notify React
-                element.dispatchEvent(new Event('input', { bubbles: true }));
-                element.dispatchEvent(new Event('change', { bubbles: true }));
-
-                // Also dispatch a compositionend (helps with some React inputs)
-                element.dispatchEvent(new CompositionEvent('compositionend', { data: text, bubbles: true }));
-
-                return true;
             } catch (e) {
-                console.log('AI Comment: Clipboard approach failed, using fallback', e);
-                // Fall through to character-by-character
+                console.log('AI Comment: Clipboard failed (expected in auto-mode)', e);
             }
         }
 
-        // For textarea or fallback: character-by-character
-        for (let i = 0; i < text.length; i++) {
-            const char = text[i];
-            const keyEventParams = { key: char, code: `Key${char.toUpperCase()}`, bubbles: true };
-            element.dispatchEvent(new KeyboardEvent('keydown', keyEventParams));
-            element.dispatchEvent(new KeyboardEvent('keypress', keyEventParams));
+        if (clipboardSuccess) {
+            // Dispatch events to notify React after successful paste
+            element.dispatchEvent(new Event('input', { bubbles: true }));
+            element.dispatchEvent(new Event('change', { bubbles: true }));
+            element.dispatchEvent(new CompositionEvent('compositionend', { data: text, bubbles: true }));
+            return true;
+        }
 
-            let inserted = false;
-            if (document.execCommand) {
-                try {
-                    inserted = document.execCommand('insertText', false, char);
-                } catch (e) { }
+        // Method 2: Direct Insertion with React Event Triggers (Robust Fallback)
+        // If clipboard fails, we MUST insert the full text directly and trigger events.
+        // The previous character-by-character loop is too brittle for the initial insertion.
+        console.log('AI Comment: Using direct insertion fallback');
+
+        // 1. Set the value directly
+        if (element.tagName === 'TEXTAREA') {
+            const nativeSetter = Object.getOwnPropertyDescriptor(window.HTMLTextAreaElement.prototype, 'value')?.set;
+            if (nativeSetter) {
+                nativeSetter.call(element, text);
+            } else {
+                element.value = text;
             }
+        } else {
+            element.innerText = text;
+        }
 
-            if (!inserted) {
-                if (element.tagName === 'TEXTAREA') {
-                    element.value += char;
-                    const nativeSetter = Object.getOwnPropertyDescriptor(window.HTMLTextAreaElement.prototype, 'value')?.set;
-                    if (nativeSetter) nativeSetter.call(element, element.value);
+        // 2. Dispatch a sequence of events to wake up React
+        element.dispatchEvent(new Event('input', { bubbles: true }));
+        element.dispatchEvent(new Event('change', { bubbles: true }));
+
+        // s. Dispatch textInput (legacy but sometimes needed)
+        try {
+            const textEvent = document.createEvent('TextEvent');
+            textEvent.initTextEvent('textInput', true, true, null, text, 9, "en-US");
+            element.dispatchEvent(textEvent);
+        } catch (e) { }
+
+        await sleep(100);
+
+        // Method 3: Sanity Check & Top-up
+        // If the value didn't stick (React overrode it), THEN we iterate.
+        // But usually Method 2 fixes the "one letter" bug.
+        const currentVal = element.tagName === 'TEXTAREA' ? element.value : element.textContent;
+        if (currentVal !== text) {
+            console.warn('AI Comment: Direct insert partial fail, retrying char-by-char...');
+            // Force clear again
+            if (element.tagName === 'TEXTAREA') element.value = ''; else element.innerText = '';
+
+            // Slow char-by-char as last resort
+            for (let i = 0; i < text.length; i++) {
+                const char = text[i];
+                if (document.execCommand) {
+                    try { document.execCommand('insertText', false, char); } catch (e) { }
                 } else {
                     element.textContent += char;
                 }
+                await sleep(20);
             }
-
-            const inputEvent = new InputEvent('input', {
-                inputType: 'insertText',
-                data: char,
-                bubbles: true,
-                cancelable: false,
-                composed: true
-            });
-            element.dispatchEvent(inputEvent);
-
-            element.dispatchEvent(new KeyboardEvent('keyup', keyEventParams));
-            await sleep(5 + Math.random() * 10);
+            element.dispatchEvent(new Event('input', { bubbles: true }));
         }
+
         return true;
     }
 

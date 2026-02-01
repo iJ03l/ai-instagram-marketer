@@ -5,7 +5,8 @@
   "description": "Generate AI-powered contextual comments for Instagram using DeepSeek, GPT-5.2, or Claude via NEAR AI Cloud",
   "permissions": [
     "storage",
-    "activeTab"
+    "activeTab",
+    "clipboardWrite"
   ],
   "host_permissions": [
     "https://www.instagram.com/*",
