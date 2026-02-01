@@ -14,6 +14,7 @@
         loadSettings();
         observeDOM();
         setTimeout(injectButtons, 1000);
+        setInterval(injectButtons, 1500);
 
         try {
             chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
@@ -37,51 +38,44 @@
 
     async function loadSettings() {
         if (!isExtensionValid()) return;
-
         return new Promise((resolve) => {
             try {
                 chrome.runtime.sendMessage({ action: 'getSettings' }, (response) => {
                     if (chrome.runtime.lastError) {
-                        resolve();
-                        return;
+                        resolve(); return;
                     }
                     settings = response?.settings || { defaultStyle: 'friendly' };
                     resolve();
                 });
-            } catch (e) {
-                resolve();
-            }
+            } catch (e) { resolve(); }
         });
     }
 
     function observeDOM() {
+        let timeout;
         const observer = new MutationObserver((mutations) => {
             let shouldInject = false;
             mutations.forEach((mutation) => {
-                if (mutation.addedNodes.length > 0) {
-                    shouldInject = true;
-                }
+                if (mutation.addedNodes.length > 0) shouldInject = true;
             });
             if (shouldInject) {
-                injectButtons();
+                clearTimeout(timeout);
+                timeout = setTimeout(injectButtons, 300);
             }
         });
-
-        observer.observe(document.body, {
-            childList: true,
-            subtree: true
-        });
+        observer.observe(document.body, { childList: true, subtree: true });
     }
 
     function injectButtons() {
         const posts = document.querySelectorAll('article');
-
         posts.forEach((post) => {
-            if (post.dataset.aiCommentInjected) return;
+            if (post.dataset.aiCommentInjected && post.querySelector('.ai-comment-btn-glass')) return;
 
             const actionBar = findActionBar(post);
-
             if (actionBar) {
+                const existingBtn = actionBar.querySelector('.ai-comment-btn-glass');
+                if (existingBtn) existingBtn.remove(); // Clean up stale
+
                 const btn = createButton();
                 const container = document.createElement('div');
                 container.style.display = 'flex';
@@ -89,11 +83,12 @@
                 container.style.marginLeft = '8px';
                 container.appendChild(btn);
 
-                actionBar.appendChild(container); // Add to end of action bar
+                actionBar.appendChild(container);
 
                 btn.addEventListener('click', (e) => {
                     e.preventDefault();
                     e.stopPropagation();
+                    console.debug('AI Comment: Button clicked');
                     handleGenerateClick(post);
                 });
 
@@ -122,48 +117,32 @@
 
     function extractPostContent(post) {
         const parts = [];
-
-        // 1. Get username
-        const usernameEl = post.querySelector('a[href^="/"] span') ||
-            post.querySelector('header a') ||
-            post.querySelector('span[style*="font-weight: 600"]');
-
+        const usernameEl = post.querySelector('a[href^="/"] span') || post.querySelector('header a') || post.querySelector('span[style*="font-weight: 600"]');
         if (usernameEl) {
             const username = usernameEl.textContent?.trim();
-            if (username && username.length < 50) {
-                parts.push(`@${username}`);
-            }
+            if (username && username.length < 50) parts.push(`@${username}`);
         }
-
-        // 2. Get caption
-        const captionEl = post.querySelector('h1') ||
-            post.querySelector('li._a9zf span') ||
-            post.querySelector('span[dir="auto"]');
-
+        const captionEl = post.querySelector('h1') || post.querySelector('li._a9zf span') || post.querySelector('span[dir="auto"]');
         if (captionEl) {
             const text = captionEl.textContent?.trim();
-            if (text && text.length > 5) {
-                parts.push(text.substring(0, 500));
-            }
+            if (text && text.length > 5) parts.push(text.substring(0, 500));
         }
-
-        // 3. Get image alt text
         const images = post.querySelectorAll('img[alt]');
         images.forEach((img) => {
             const alt = img.alt?.trim();
-            if (alt && alt.length > 10 && !alt.includes('profile') && !alt.includes('Photo by')) {
-                parts.push(alt.substring(0, 200));
-            }
+            if (alt && alt.length > 10 && !alt.includes('profile') && !alt.includes('Photo by')) parts.push(alt.substring(0, 200));
         });
-
         const content = parts.join(' - ');
         console.log('AI Comment Extracted Content:', content);
-
         return content || 'Instagram post';
     }
 
     function showToast(message, type = 'info') {
+        const existing = document.querySelectorAll('.ai-toast-message');
+        existing.forEach(el => el.remove());
+
         const toast = document.createElement('div');
+        toast.className = 'ai-toast-message';
         toast.textContent = message;
         toast.style.position = 'fixed';
         toast.style.bottom = '20px';
@@ -182,12 +161,10 @@
         toast.style.transition = 'all 0.3s ease';
 
         document.body.appendChild(toast);
-
         requestAnimationFrame(() => {
             toast.style.opacity = '1';
             toast.style.transform = 'translateX(-50%) translateY(-10px)';
         });
-
         setTimeout(() => {
             toast.style.opacity = '0';
             toast.style.transform = 'translateX(-50%) translateY(20px)';
@@ -197,23 +174,33 @@
 
     async function handleGenerateClick(post) {
         if (!isExtensionValid()) {
-            showToast('Extension reloaded. Refresh the page.', 'warning');
+            showToast('Reloading needs refresh', 'warning');
             return;
         }
 
         if (isProcessing) {
-            showToast('Generating...', 'warning');
-            return;
+            const lastClick = parseInt(post.dataset.lastClickTime || '0');
+            const now = Date.now();
+            if (now - lastClick > 10000) {
+                isProcessing = false;
+            } else {
+                showToast('Generating... please wait', 'warning');
+                return;
+            }
         }
+
+        const startUrl = window.location.href;
 
         currentPost = post;
         isProcessing = true;
+        post.dataset.lastClickTime = Date.now().toString();
+
         showToast('🤖 Generating comment...', 'info');
 
         const postContent = extractPostContent(post);
 
-        if (!postContent || postContent.length < 5) {
-            showToast('Could not read post', 'error');
+        if (!postContent) {
+            showToast('Could not read post content', 'error');
             isProcessing = false;
             return;
         }
@@ -222,7 +209,7 @@
         const style = settings?.defaultStyle || 'friendly';
 
         try {
-            console.log('AI Comment: Sending request to generate...');
+            console.debug('AI Comment: Sending request...');
             const response = await chrome.runtime.sendMessage({
                 action: 'generateComment',
                 postContent: postContent,
@@ -230,24 +217,23 @@
                 customPrompt: settings?.customPrompt || ''
             });
 
-            console.log('AI Comment: Response received:', response);
+            if (chrome.runtime.lastError) throw new Error('Extension context invalidated');
 
             if (!response || !response.success) {
-                showToast(response?.error || 'Generation failed - check API key', 'error');
+                showToast(response?.error || 'Generation failed', 'error');
                 isProcessing = false;
                 return;
             }
 
             const comment = response.comment;
-            console.log('AI Comment: Generated:', comment);
 
-            if (!comment || comment.length < 2) {
+            if (!comment) {
                 showToast('Empty comment received', 'error');
                 isProcessing = false;
                 return;
             }
 
-            showToast('💬 Opening comment modal...', 'info');
+            showToast('💬 Opening modal...', 'info');
 
             if (isExtensionValid()) {
                 chrome.runtime.sendMessage({
@@ -257,15 +243,12 @@
                 });
             }
 
-            // Find and click the comment icon to open modal
             const commentIcon = findCommentIcon(post);
 
             if (commentIcon) {
                 commentIcon.click();
-
-                // Wait for modal to open, then post
                 setTimeout(() => {
-                    postCommentInModal(comment);
+                    postCommentInModal(comment, startUrl);
                 }, 1000);
             } else {
                 showToast('Comment icon not found', 'error');
@@ -274,7 +257,7 @@
 
         } catch (error) {
             console.error('AI Comment:', error);
-            showToast(error.message || 'Error', 'error');
+            showToast('Error: ' + error.message, 'error');
             isProcessing = false;
         }
     }
@@ -286,112 +269,121 @@
             '[aria-label="Comment"]',
             '[aria-label="comment"]'
         ];
-
         for (const selector of selectors) {
             const icon = post.querySelector(selector);
             if (icon) {
-                const clickable = icon.closest('button') ||
-                    icon.closest('div[role="button"]') ||
-                    icon.closest('span') ||
-                    icon.parentElement;
+                const clickable = icon.closest('button') || icon.closest('div[role="button"]') || icon.closest('span') || icon.parentElement;
                 if (clickable) return clickable;
             }
         }
-
         const svgs = post.querySelectorAll('svg');
         for (const svg of svgs) {
             const parent = svg.parentElement;
             if (parent && parent.tagName !== 'BUTTON') {
                 const rect = svg.getBoundingClientRect();
-                if (rect.width >= 20 && rect.width <= 30) {
-                    const clickable = svg.closest('button') || svg.closest('div[role="button"]') || parent;
-                    const section = clickable.closest('section');
-                    if (section) return clickable;
+                if (rect.width >= 20 && rect.width <= 32) {
+                    const clickable = svg.closest('button') || svg.closest('div[role="button"]');
+                    if (clickable) return clickable;
                 }
             }
         }
-
         return null;
     }
 
-    async function postCommentInModal(comment) {
-        showToast('Posting comment...', 'info');
+    async function postCommentInModal(comment, startUrl) {
+        showToast('Posting...', 'info');
 
-        // Wait for comment input in the modal
-        const input = await waitForElement('textarea', 5000);
+        const input = await waitForStrictInput(5000);
 
         if (!input) {
-            showToast('Comment field not found', 'error');
+            showToast('Input not found (Strict Mode)', 'error');
             isProcessing = false;
             return;
         }
 
-        // Focus and clear
+        console.log('AI Comment: Found strict input:', input);
+
         input.focus();
         input.click();
-        await sleep(100);
-        input.value = '';
+        await sleep(150);
 
-        // Method 1: Simulate typing (most reliable for Instagram/React)
-        await simulateTyping(input, comment);
-
-        // Method 2: Fallback to native setter
-        if (input.value !== comment) {
-            const nativeSetter = Object.getOwnPropertyDescriptor(
-                window.HTMLTextAreaElement.prototype, 'value'
-            )?.set;
-
-            if (nativeSetter) {
-                nativeSetter.call(input, comment);
-            } else {
-                input.value = comment;
-            }
-
-            input.dispatchEvent(new Event('input', { bubbles: true }));
+        // Robust Clearing
+        if (input.tagName === 'TEXTAREA') {
+            input.value = '';
+        } else {
+            input.innerHTML = '<br>'; // React often needs a break or empty text node
         }
 
-        // Blur and refocus to trigger validation
+        await simulateTyping(input, comment);
+
+        // Verification & Forcing
+        const currentVal = input.tagName === 'TEXTAREA' ? input.value : input.textContent;
+        // Check if empty or mismatch
+        if (!currentVal || currentVal.trim() !== comment.trim()) {
+            console.warn('AI Comment: Mismatch detected, forcing value...');
+
+            // Force focus again
+            input.focus();
+
+            if (input.tagName === 'TEXTAREA') {
+                input.value = comment;
+            } else {
+                // For contenteditable, innerText is safer than textContent for visual updates
+                input.innerText = comment;
+            }
+
+            // Dispatch everything to wake up React
+            input.dispatchEvent(new Event('input', { bubbles: true }));
+            input.dispatchEvent(new Event('change', { bubbles: true }));
+
+            // Special textInput event for legacy support
+            try {
+                const textEvent = document.createEvent('TextEvent');
+                textEvent.initTextEvent('textInput', true, true, null, comment, 9, "en-US");
+                input.dispatchEvent(textEvent);
+            } catch (e) { }
+        }
+
         input.blur();
         await sleep(50);
         input.focus();
 
-        await sleep(500);
+        await sleep(600);
 
-        // Retry finding and clicking Post button
+        // Find Post button
+        const container = input.closest('form') || input.closest('div[role="dialog"]') || document.body;
         let postBtn = null;
         let attempts = 0;
         const maxAttempts = 15;
 
         while (!postBtn && attempts < maxAttempts) {
             await sleep(300);
-            postBtn = findPostButton();
+            postBtn = findPostButtonInContainer(container);
             attempts++;
-
+            // Keep poking the input
             if (!postBtn) {
-                input.dispatchEvent(new Event('input', { bubbles: true }));
+                input.dispatchEvent(new InputEvent('input', { inputType: 'insertText', data: ' ', bubbles: true }));
             }
         }
 
         if (postBtn) {
             if (postBtn.disabled || postBtn.style.opacity < '0.5') {
-                showToast('Post button disabled - typing failed?', 'warning');
-                input.dispatchEvent(new InputEvent('input', { inputType: 'insertText', data: ' ', bubbles: true }));
+                // Final poke
+                input.dispatchEvent(new InputEvent('input', { inputType: 'insertText', data: '.', bubbles: true }));
+                // Remove the dot if we added it? No, just rely on user or it's fine.
             }
 
             postBtn.click();
 
             if (isExtensionValid()) {
-                chrome.runtime.sendMessage({
-                    action: 'updateStats',
-                    statType: 'posted'
-                });
+                chrome.runtime.sendMessage({ action: 'updateStats', statType: 'posted' });
             }
             showToast('✅ Comment posted!', 'success');
-            setTimeout(() => closeModal(), 1500);
+            setTimeout(() => closeModal(startUrl), 1500);
 
         } else {
-            console.log('AI Comment: Could not find Post button. DOM state:', document.body.innerHTML.substring(0, 500));
-            showToast('Post button not found (Click manually)', 'warning');
+            console.log('AI Comment: no post button found');
+            showToast('Post button not found', 'warning');
         }
 
         isProcessing = false;
@@ -399,91 +391,105 @@
 
     async function simulateTyping(element, text) {
         element.focus();
-
         for (let i = 0; i < text.length; i++) {
             const char = text[i];
             const keyEventParams = { key: char, code: `Key${char.toUpperCase()}`, bubbles: true };
-
             element.dispatchEvent(new KeyboardEvent('keydown', keyEventParams));
             element.dispatchEvent(new KeyboardEvent('keypress', keyEventParams));
 
             let inserted = false;
+            // Native execCommand for contenteditable
             if (document.execCommand) {
-                try { inserted = document.execCommand('insertText', false, char); } catch (e) { }
+                try {
+                    inserted = document.execCommand('insertText', false, char);
+                } catch (e) { }
             }
 
             if (!inserted) {
-                element.value += char;
-                const nativeSetter = Object.getOwnPropertyDescriptor(window.HTMLTextAreaElement.prototype, 'value')?.set;
-                if (nativeSetter) nativeSetter.call(element, element.value);
+                if (element.tagName === 'TEXTAREA') {
+                    element.value += char;
+                    const nativeSetter = Object.getOwnPropertyDescriptor(window.HTMLTextAreaElement.prototype, 'value')?.set;
+                    if (nativeSetter) nativeSetter.call(element, element.value);
+                } else {
+                    // Manual append for contenteditable
+                    element.textContent += char; // Fallback
+                }
             }
 
-            element.dispatchEvent(new InputEvent('input', { inputType: 'insertText', data: char, bubbles: true }));
-            element.dispatchEvent(new KeyboardEvent('keyup', keyEventParams));
+            // React primarily listens to 'input' with inputType
+            const inputEvent = new InputEvent('input', {
+                inputType: 'insertText',
+                data: char,
+                bubbles: true,
+                cancelable: false,
+                composed: true
+            });
+            element.dispatchEvent(inputEvent);
 
+            element.dispatchEvent(new KeyboardEvent('keyup', keyEventParams));
             await sleep(5 + Math.random() * 10);
         }
-
-        element.dispatchEvent(new Event('change', { bubbles: true }));
         return true;
     }
 
-    function findPostButton() {
-        const potentialButtons = document.querySelectorAll('div[role="dialog"] [role="button"], div[role="dialog"] button, form button');
+    function findPostButtonInContainer(container) {
+        const potentialButtons = container.querySelectorAll('[role="button"], button');
         for (const btn of potentialButtons) {
             const text = btn.textContent.trim().toLowerCase();
-            if (text === 'post') {
-                return btn;
+            if (text === 'post') return btn;
+        }
+        if (container !== document.body) {
+            const globalBtns = document.querySelectorAll('div[role="dialog"] [role="button"], div[role="dialog"] button');
+            for (const btn of globalBtns) {
+                if (btn.textContent.trim().toLowerCase() === 'post') return btn;
             }
         }
         return null;
     }
 
-    function closeModal() {
+    function closeModal(startUrl) {
         console.log('AI Comment: Closing modal...');
-
-        // Method 1: Simulate Escape key (Primary request)
-        const escEvent = new KeyboardEvent('keydown', {
-            key: 'Escape',
-            code: 'Escape',
-            keyCode: 27,
-            which: 27,
-            bubbles: true,
-            cancelable: true,
-            view: window
-        });
+        const escEvent = new KeyboardEvent('keydown', { key: 'Escape', code: 'Escape', keyCode: 27, which: 27, bubbles: true, cancelable: true, view: window });
         document.dispatchEvent(escEvent);
 
-        // Method 2: Click Close button if found (Safe backup)
         setTimeout(() => {
             const closeBtn = document.querySelector('[aria-label="Close"]') ||
-                document.querySelector('svg[aria-label="Close"]')?.closest('[role="button"]') ||
-                document.querySelector('svg[aria-label="Close"]')?.parentElement;
-
+                document.querySelector('svg[aria-label="Close"]')?.closest('[role="button"]');
             if (closeBtn) {
-                if (typeof closeBtn.click === 'function') {
-                    closeBtn.click();
-                } else {
-                    const clickEvent = new MouseEvent('click', {
-                        view: window,
-                        bubbles: true,
-                        cancelable: true
-                    });
-                    closeBtn.dispatchEvent(clickEvent);
-                }
+                if (typeof closeBtn.click === 'function') closeBtn.click();
+                else closeBtn.dispatchEvent(new MouseEvent('click', { view: window, bubbles: true, cancelable: true }));
             }
         }, 200);
+
+        setTimeout(() => {
+            if (startUrl && window.location.href !== startUrl) {
+                if (window.history.length > 1) window.history.back();
+            }
+        }, 500);
     }
 
-    function waitForElement(selector, timeout = 3000) {
+    function waitForStrictInput(timeout = 3000) {
         return new Promise((resolve) => {
-            if (document.querySelector(selector)) {
-                resolve(document.querySelector(selector));
+            const check = () => {
+                const dialogInputs = document.querySelectorAll('div[role="dialog"] textarea, div[role="dialog"] [contenteditable="true"][role="textbox"]');
+                for (const el of dialogInputs) {
+                    if (isElementVisible(el)) return el;
+                }
+                const allInputs = document.querySelectorAll('textarea, [contenteditable="true"][role="textbox"]');
+                for (const el of allInputs) {
+                    if (isElementVisible(el)) return el;
+                }
+                return null;
+            };
+
+            const existing = check();
+            if (existing) {
+                resolve(existing);
                 return;
             }
 
             const observer = new MutationObserver(() => {
-                const el = document.querySelector(selector);
+                const el = check();
                 if (el) {
                     observer.disconnect();
                     resolve(el);
@@ -494,9 +500,21 @@
 
             setTimeout(() => {
                 observer.disconnect();
-                resolve(document.querySelector(selector));
+                resolve(check());
             }, timeout);
         });
+    }
+
+    function isElementVisible(el) {
+        if (!el) return false;
+        if (el.offsetParent === null) return false;
+        const style = window.getComputedStyle(el);
+        if (style.display === 'none') return false;
+        if (style.visibility === 'hidden') return false;
+        if (style.opacity === '0') return false;
+        const rect = el.getBoundingClientRect();
+        if (rect.width === 0 || rect.height === 0) return false;
+        return true;
     }
 
     function sleep(ms) {
@@ -504,7 +522,7 @@
     }
 
     function handleKeyboardShortcut() {
-        // Placeholder
+        if (currentPost) handleGenerateClick(currentPost);
     }
 
 })();
