@@ -430,6 +430,45 @@
 
     async function simulateTyping(element, text) {
         element.focus();
+
+        // For contenteditable (Instagram's comment box), use clipboard approach
+        if (element.contentEditable === 'true' || element.getAttribute('contenteditable') === 'true') {
+            try {
+                // Clear first
+                element.innerHTML = '';
+
+                // Use clipboard API if available (most reliable for React)
+                if (navigator.clipboard && navigator.clipboard.writeText) {
+                    await navigator.clipboard.writeText(text);
+
+                    // Trigger paste
+                    element.focus();
+                    const pasteResult = document.execCommand('paste');
+
+                    if (!pasteResult) {
+                        // Fallback: direct insertion
+                        element.innerText = text;
+                    }
+                } else {
+                    // No clipboard API, use direct insertion
+                    element.innerText = text;
+                }
+
+                // Dispatch events to notify React
+                element.dispatchEvent(new Event('input', { bubbles: true }));
+                element.dispatchEvent(new Event('change', { bubbles: true }));
+
+                // Also dispatch a compositionend (helps with some React inputs)
+                element.dispatchEvent(new CompositionEvent('compositionend', { data: text, bubbles: true }));
+
+                return true;
+            } catch (e) {
+                console.log('AI Comment: Clipboard approach failed, using fallback', e);
+                // Fall through to character-by-character
+            }
+        }
+
+        // For textarea or fallback: character-by-character
         for (let i = 0; i < text.length; i++) {
             const char = text[i];
             const keyEventParams = { key: char, code: `Key${char.toUpperCase()}`, bubbles: true };

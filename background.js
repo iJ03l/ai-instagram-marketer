@@ -225,16 +225,17 @@ async function generateComment(postContent, style, customPrompt = '', imageUrls 
 ABSOLUTE RULES:
 - NEVER ask the user for images, uploads, or more information.
 - NEVER say you cannot see the image or need more context.
-- ALWAYS generate a comment based on whatever context is provided.
-- If visual details are missing, use the caption/author info creatively.
-- Length: Natural for the context.
+- NEVER assume or fabricate details you don't have. If you can't clearly see or understand the content, DO NOT guess.
+- If context is unclear or minimal: Use simple emoji reactions (🔥, 😂, 💯, 👏, 😍) or brief universal comments like "This is everything", "Vibes", "Love this", "Facts".
+- ALWAYS generate something - even just an emoji or two words.
+- If you CAN see clear context (caption, description), react specifically to it.
+${useVision ? '- If you can see the image: reference specific visual elements or text in it.' : ''}
+- Length: Natural for the context (can be emoji-only if needed).
 - Do NOT summarize the post.
 - Be casual and human, not robotic.
-- React directly to what's described or shown.
-${useVision ? '- If you can see the image: reference specific visual elements or text in it.' : ''}
 - No hashtags unless asked.
-- No emoji overload.
-- No generic praise ("Great shot!", "Nice!"). Be specific.
+- No emoji overload (max 2-3).
+- No generic praise ("Great shot!", "Nice!") unless you have NO other context.
 - Do NOT use em dashes (—).
 
 Style: ${stylePrompt}${globalInstructions}`;
