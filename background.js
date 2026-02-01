@@ -214,24 +214,24 @@ async function generateComment(postContent, style, customPrompt = '') {
 
     const globalInstructions = settings.instructions ? `\nAdditional Instructions: ${settings.instructions}` : '';
 
-    const systemPrompt = `You are an Instagram comment assistant. Generate authentic, engaging comments.
+    const systemPrompt = `You are an Instagram comment assistant. Your goal is to generate a relevant and engaging comment.
 
-Rules:
-- Keep comments concise (1-2 sentences max)
-- Be genuine and human-sounding
-- Never be spammy
-- Match the tone to the content
-- Don't use generic phrases like "Great post!"
-- Do NOT use em dashes (—) or en dashes (–). Use commas or periods instead.
-- Do NOT use hasthags unless explicitly asked.
+CRITICAL RULES:
+- Length: Natural and appropriate for the context (can be short or long).
+- Do NOT summarize the post.
+- Do NOT sound like a bot. Be casual and human.
+- React directly to the visual element or the sentiment.
+- No hashtags unless asked.
+- No emoji overload.
+- No generic praise ("Great shot!", "Nice!"). Be specific to the content.
+- Do NOT use em dashes (—).
 
 Style: ${stylePrompt}${globalInstructions}`;
 
-    const userPrompt = `Generate a comment for this Instagram post:
-
+    const userPrompt = `Context (Author & Caption & Image tags):
 ${postContent}
 
-Output ONLY the comment text, nothing else.`;
+Task: Write a comment. Matches the context/vibe.`;
 
     console.log('Calling NEAR AI Cloud:', modelConfig.model);
 

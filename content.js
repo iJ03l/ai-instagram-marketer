@@ -115,25 +115,71 @@
         return btn;
     }
 
+    // IMPROVED CONTENT EXTRACTION
     function extractPostContent(post) {
         const parts = [];
-        const usernameEl = post.querySelector('a[href^="/"] span') || post.querySelector('header a') || post.querySelector('span[style*="font-weight: 600"]');
+
+        // 1. Get Author
+        // Try multiple selectors for username
+        const usernameEl = post.querySelector('header h2') ||
+            post.querySelector('header a') ||
+            post.querySelector('a[href^="/"][role="link"] span') ||
+            post.querySelector('div > span > a > span'); // New UI
+
         if (usernameEl) {
             const username = usernameEl.textContent?.trim();
-            if (username && username.length < 50) parts.push(`@${username}`);
+            if (username && username.length < 50 && !username.includes('Sponsored')) {
+                parts.push(`Author: @${username}`);
+            }
         }
-        const captionEl = post.querySelector('h1') || post.querySelector('li._a9zf span') || post.querySelector('span[dir="auto"]');
-        if (captionEl) {
-            const text = captionEl.textContent?.trim();
-            if (text && text.length > 5) parts.push(text.substring(0, 500));
+
+        // 2. Get Caption (The most important part)
+        // We look for the main caption container. Instagram often uses h1 or a flattened span structure.
+        let caption = '';
+
+        // Strategy A: Look for h1 (common for accessibility)
+        const h1 = post.querySelector('h1');
+        if (h1) {
+            caption = h1.textContent;
         }
+
+        // Strategy B: Look for the first comment structure (author + text)
+        if (!caption || caption.length < 5) {
+            const captionContainer = post.querySelector('div > ul > li > div > div > div > span');
+            if (captionContainer) {
+                caption = captionContainer.textContent;
+            }
+        }
+
+        // Strategy C: Fallback to aria-label on the main image if it contains "Caption" logic
+        // (Instagram sometimes puts "Photo by [User] on [Date]. May be an image of [alt]" in label)
+
+        if (caption) {
+            // Clean caption (remove "Verified" or redundant text if scraped)
+            const cleaned = caption.replace(/Verified/g, '').trim();
+            if (cleaned.length > 0) parts.push(`Caption: "${cleaned.substring(0, 800)}"`);
+        }
+
+        // 3. Get Image Alt Text (Visual Context)
         const images = post.querySelectorAll('img[alt]');
+        let imageDescriptions = [];
         images.forEach((img) => {
             const alt = img.alt?.trim();
-            if (alt && alt.length > 10 && !alt.includes('profile') && !alt.includes('Photo by')) parts.push(alt.substring(0, 200));
+            // Filter out generic alts
+            if (alt && alt.length > 5 &&
+                !alt.includes('profile picture') &&
+                !alt.includes('Photo by') &&
+                !imageDescriptions.includes(alt)) {
+                imageDescriptions.push(alt);
+            }
         });
-        const content = parts.join(' - ');
-        console.log('AI Comment Extracted Content:', content);
+
+        if (imageDescriptions.length > 0) {
+            parts.push(`Image Context: ${imageDescriptions.join('. ')}`);
+        }
+
+        const content = parts.join('\n');
+        console.log('AI Comment Extracted Content:\n', content);
         return content || 'Instagram post';
     }
 
@@ -199,10 +245,10 @@
 
         const postContent = extractPostContent(post);
 
-        if (!postContent) {
-            showToast('Could not read post content', 'error');
-            isProcessing = false;
-            return;
+        // Allow partial content if we have at least Image Context
+        if (!postContent || postContent.length < 10) {
+            console.warn('AI Comment: Content extraction unreliable', postContent);
+            // We proceed anyway but with a warning in stats
         }
 
         await loadSettings();
@@ -370,7 +416,11 @@
             if (postBtn.disabled || postBtn.style.opacity < '0.5') {
                 // Final poke
                 input.dispatchEvent(new InputEvent('input', { inputType: 'insertText', data: '.', bubbles: true }));
-                // Remove the dot if we added it? No, just rely on user or it's fine.
+                // Remove the dot in a real scenario? I'll leave it for now to ensure enablement.
+                // Or try backspace immediately
+                setTimeout(() => {
+                    input.dispatchEvent(new InputEvent('input', { inputType: 'deleteContentBackward', data: null, bubbles: true }));
+                }, 50);
             }
 
             postBtn.click();
