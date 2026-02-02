@@ -271,49 +271,53 @@
         };
 
         if (variant === 'primary') {
-            // Primary button - gradient glassmorphism
+            // Primary button - Black Glass
             Object.assign(btn.style, {
                 ...baseStyles,
-                background: 'linear-gradient(135deg, rgba(99, 102, 241, 0.9) 0%, rgba(139, 92, 246, 0.9) 100%)',
-                backdropFilter: 'blur(10px)',
-                WebkitBackdropFilter: 'blur(10px)',
+                background: 'rgba(20, 20, 20, 0.85)',
+                backdropFilter: 'blur(12px)',
+                WebkitBackdropFilter: 'blur(12px)',
                 color: 'white',
-                border: '1px solid rgba(255, 255, 255, 0.3)',
-                boxShadow: '0 4px 15px 0 rgba(99, 102, 241, 0.4), inset 0 1px 0 rgba(255, 255, 255, 0.2)'
+                border: '1px solid rgba(255, 255, 255, 0.15)',
+                boxShadow: '0 4px 16px 0 rgba(0, 0, 0, 0.3), inset 0 1px 0 rgba(255, 255, 255, 0.1)'
             });
 
             btn.onmouseenter = () => {
                 btn.style.transform = 'translateY(-2px) scale(1.02)';
-                btn.style.boxShadow = '0 8px 25px 0 rgba(99, 102, 241, 0.5), inset 0 1px 0 rgba(255, 255, 255, 0.3)';
+                btn.style.background = 'rgba(0, 0, 0, 0.95)';
+                btn.style.boxShadow = '0 8px 25px 0 rgba(0, 0, 0, 0.4), inset 0 1px 0 rgba(255, 255, 255, 0.2)';
             };
 
             btn.onmouseleave = () => {
                 btn.style.transform = 'translateY(0) scale(1)';
-                btn.style.boxShadow = '0 4px 15px 0 rgba(99, 102, 241, 0.4), inset 0 1px 0 rgba(255, 255, 255, 0.2)';
+                btn.style.background = 'rgba(20, 20, 20, 0.85)';
+                btn.style.boxShadow = '0 4px 16px 0 rgba(0, 0, 0, 0.3), inset 0 1px 0 rgba(255, 255, 255, 0.1)';
             };
 
         } else {
-            // Secondary button - subtle glassmorphism
+            // Secondary button - Lighter Black Glass
             Object.assign(btn.style, {
                 ...baseStyles,
-                background: 'rgba(255, 255, 255, 0.7)',
+                background: 'rgba(40, 40, 40, 0.7)',
                 backdropFilter: 'blur(10px)',
                 WebkitBackdropFilter: 'blur(10px)',
-                color: '#4b5563',
-                border: '1px solid rgba(255, 255, 255, 0.5)',
-                boxShadow: '0 2px 8px 0 rgba(31, 38, 135, 0.1), inset 0 1px 0 rgba(255, 255, 255, 0.5)'
+                color: '#e0e0e0',
+                border: '1px solid rgba(255, 255, 255, 0.1)',
+                boxShadow: '0 2px 8px 0 rgba(0, 0, 0, 0.2), inset 0 1px 0 rgba(255, 255, 255, 0.05)'
             });
 
             btn.onmouseenter = () => {
-                btn.style.background = 'rgba(255, 255, 255, 0.9)';
+                btn.style.background = 'rgba(30, 30, 30, 0.8)';
                 btn.style.transform = 'translateY(-1px)';
-                btn.style.boxShadow = '0 4px 12px 0 rgba(31, 38, 135, 0.15), inset 0 1px 0 rgba(255, 255, 255, 0.6)';
+                btn.style.color = '#ffffff';
+                btn.style.boxShadow = '0 4px 12px 0 rgba(0, 0, 0, 0.3), inset 0 1px 0 rgba(255, 255, 255, 0.1)';
             };
 
             btn.onmouseleave = () => {
-                btn.style.background = 'rgba(255, 255, 255, 0.7)';
+                btn.style.background = 'rgba(40, 40, 40, 0.7)';
                 btn.style.transform = 'translateY(0)';
-                btn.style.boxShadow = '0 2px 8px 0 rgba(31, 38, 135, 0.1), inset 0 1px 0 rgba(255, 255, 255, 0.5)';
+                btn.style.color = '#e0e0e0';
+                btn.style.boxShadow = '0 2px 8px 0 rgba(0, 0, 0, 0.2), inset 0 1px 0 rgba(255, 255, 255, 0.05)';
             };
         }
 
@@ -341,7 +345,7 @@
                 width: size + 'px',
                 height: size + 'px',
                 borderRadius: '50%',
-                background: variant === 'primary' ? 'rgba(255, 255, 255, 0.5)' : 'rgba(99, 102, 241, 0.3)',
+                background: 'rgba(255, 255, 255, 0.2)',
                 left: x + 'px',
                 top: y + 'px',
                 transform: 'scale(0)',
