@@ -23,17 +23,10 @@
     }
 
     function addCustomButtons() {
-        // Target the top bar action area (where Share / Favorites are)
-        // Notion selectors are tricky. Common reliable ones:
-        // .notion-topbar-action-buttons
-        // .notion-topbar-share-menu
-
-        // We will try to find the standard topbar container
+        // Target the top bar action area
         const topbar = document.querySelector('.notion-topbar');
         if (!topbar) return;
 
-        // Try to insert before the "Share" button or at the start of the right-side actions
-        // Usually the right side actions are in a flex container inside topbar
         const actionsContainer = topbar.querySelector('div[style*="display: flex"] > div:last-child')
             || topbar.lastElementChild;
 
@@ -47,13 +40,22 @@
 
         if (context.type === 'none') return;
 
-        // Create Container
+        // Create Container with glassmorphism
         const container = document.createElement('div');
         container.id = 'smith-ai-controls';
-        container.style.display = 'flex';
-        container.style.alignItems = 'center';
-        container.style.marginRight = '12px';
-        container.style.gap = '8px';
+        Object.assign(container.style, {
+            display: 'flex',
+            alignItems: 'center',
+            gap: '8px',
+            marginRight: '12px',
+            padding: '6px 12px',
+            borderRadius: '12px',
+            background: 'rgba(255, 255, 255, 0.25)',
+            backdropFilter: 'blur(10px)',
+            WebkitBackdropFilter: 'blur(10px)',
+            border: '1px solid rgba(255, 255, 255, 0.3)',
+            boxShadow: '0 8px 32px 0 rgba(31, 38, 135, 0.15)'
+        });
 
         // Add Context-Specific Buttons
         if (context.type === 'table') {
@@ -65,40 +67,164 @@
                 } else {
                     showToast('No valid rows found (Need Name & Prompt)', 'error');
                 }
-            }, '🎨'));
+            }, '🎨', 'primary'));
+
         } else if (context.type === 'empty') {
-            container.appendChild(createButton('Create Strategy', async () => {
-                showToast('Generating Strategy... (This may take 30s)', 'info');
-                try {
-                    const res = await chrome.runtime.sendMessage({ action: 'generateStrategyDoc' });
-                    if (res && res.success && res.doc) {
-                        const bodyBlock = document.querySelector('.notion-page-content [data-content-editable-leaf="true"]');
-                        if (bodyBlock) {
-                            simulateTyping(bodyBlock, res.doc);
-                        }
-                        showToast('Strategy Created!', 'success');
-                    } else {
-                        showToast('Generation failed', 'error');
-                    }
-                } catch (e) {
-                    showToast('Error: ' + e.message, 'error');
-                }
-            }, '✨'));
+            // Strategy Button (Primary)
+            container.appendChild(createButton('Strategy', async () => {
+                await generateAndInsertContent('generateStrategyDoc', 'Strategy');
+            }, '✨', 'primary'));
+
+            // Toolkit Buttons
+            container.appendChild(createButton('Calendar', () =>
+                generateAndInsertContent('generateToolkit', 'Content Calendar', 'calendar'),
+                '📅', 'secondary'));
+
+            container.appendChild(createButton('Audit', () =>
+                generateAndInsertContent('generateToolkit', 'Competitor Audit', 'audit'),
+                '🔍', 'secondary'));
+
+            container.appendChild(createButton('Influencer', () =>
+                generateAndInsertContent('generateToolkit', 'Influencer Tracker', 'influencer'),
+                '🤝', 'secondary'));
+
         } else {
-            // Default / Report context
+            // Report context
             container.appendChild(createButton('Push Report', async () => {
                 showToast('Fetching stats...', 'info');
                 const response = await chrome.runtime.sendMessage({ action: 'getStats' });
                 const stats = response.stats || {};
-
                 const result = await pushReport(stats);
                 showToast(result.message || 'Done', result.success ? 'success' : 'error');
-            }, '📊'));
+            }, '📊', 'primary'));
         }
 
         // Insert into DOM
-        // We prepend to the actions container so it's visible before the system buttons
         actionsContainer.prepend(container);
+    }
+
+    // ✅ FIXED: Unified content generation and insertion
+    async function generateAndInsertContent(action, displayName, toolType = null) {
+        showToast(`Generating ${displayName}... (30s)`, 'info');
+
+        try {
+            const message = toolType
+                ? { action, toolType }
+                : { action };
+
+            const res = await chrome.runtime.sendMessage(message);
+
+            if (res && res.success && res.doc) {
+                console.log('[SMITH] Received content:', res.doc.substring(0, 100));
+
+                // ✅ IMPROVED: Better Notion content insertion
+                const success = await insertContentIntoNotion(res.doc);
+
+                if (success) {
+                    showToast(`${displayName} Created!`, 'success');
+                } else {
+                    showToast('Error: Could not insert content', 'error');
+                }
+            } else {
+                showToast('Generation failed: ' + (res?.error || 'Unknown error'), 'error');
+            }
+        } catch (e) {
+            console.error('[SMITH] Generation error:', e);
+            showToast('Error: ' + e.message, 'error');
+        }
+    }
+
+    // ✅ COMPLETELY REWRITTEN: Notion content insertion
+    async function insertContentIntoNotion(markdownContent) {
+        console.log('[SMITH] Inserting content into Notion...');
+
+        // Method 1: Try to find the main content editable area
+        let target = document.querySelector('.notion-page-content [contenteditable="true"]');
+
+        // Method 2: Try the placeholder area
+        if (!target) {
+            target = document.querySelector('[data-content-editable-leaf="true"]');
+        }
+
+        // Method 3: Try any contenteditable in the main area
+        if (!target) {
+            target = document.querySelector('.notion-page-block-children [contenteditable="true"]');
+        }
+
+        if (!target) {
+            console.error('[SMITH] No editable area found');
+            return false;
+        }
+
+        console.log('[SMITH] Found target:', target);
+
+        // Focus and wait
+        target.click();
+        target.focus();
+        await sleep(300);
+
+        // ✅ Try multiple insertion methods
+        let success = false;
+
+        // Method 1: execCommand (most reliable for Notion)
+        if (document.execCommand) {
+            try {
+                // Clear existing content first
+                document.execCommand('selectAll', false, null);
+                document.execCommand('delete', false, null);
+
+                // Insert new content
+                success = document.execCommand('insertText', false, markdownContent);
+                console.log('[SMITH] execCommand result:', success);
+            } catch (e) {
+                console.error('[SMITH] execCommand failed:', e);
+            }
+        }
+
+        // Method 2: Paste event (fallback)
+        if (!success) {
+            try {
+                const pasteEvent = new ClipboardEvent('paste', {
+                    bubbles: true,
+                    cancelable: true,
+                    clipboardData: new DataTransfer()
+                });
+
+                pasteEvent.clipboardData.setData('text/plain', markdownContent);
+                target.dispatchEvent(pasteEvent);
+
+                success = true;
+                console.log('[SMITH] Paste event dispatched');
+            } catch (e) {
+                console.error('[SMITH] Paste event failed:', e);
+            }
+        }
+
+        // Method 3: Direct manipulation (last resort)
+        if (!success) {
+            try {
+                target.innerText = markdownContent;
+
+                // Trigger input events
+                target.dispatchEvent(new InputEvent('beforeinput', { bubbles: true, cancelable: true }));
+                target.dispatchEvent(new InputEvent('input', { bubbles: true }));
+                target.dispatchEvent(new Event('change', { bubbles: true }));
+
+                success = true;
+                console.log('[SMITH] Direct manipulation completed');
+            } catch (e) {
+                console.error('[SMITH] Direct manipulation failed:', e);
+            }
+        }
+
+        // Give Notion time to process
+        await sleep(500);
+
+        return success;
+    }
+
+    function sleep(ms) {
+        return new Promise(resolve => setTimeout(resolve, ms));
     }
 
     function analyzeContext() {
@@ -110,7 +236,6 @@
         const pageContent = document.querySelector('.notion-page-content');
         if (pageContent) {
             const blocks = pageContent.querySelectorAll('[data-block-id]');
-            // Heuristic for "Empty": Less than 3 blocks (Title + 1 empty block)
             if (blocks.length < 3) return { type: 'empty' };
             return { type: 'page' };
         }
@@ -118,60 +243,137 @@
         return { type: 'none' };
     }
 
-    function createButton(text, onClick, icon) {
+    // ✅ REDESIGNED: Glassmorphism buttons
+    function createButton(text, onClick, icon, variant = 'secondary') {
         const btn = document.createElement('div');
         btn.role = 'button';
         btn.className = 'smith-notion-btn';
-        btn.innerHTML = `${icon} <span style="margin-left:4px">${text}</span>`;
+        btn.innerHTML = `<span style="font-size: 16px; margin-right: 6px;">${icon}</span><span>${text}</span>`;
 
-        // Match Notion's button style (approx)
-        Object.assign(btn.style, {
-            display: 'flex',
+        // Glassmorphism base styles
+        const baseStyles = {
+            display: 'inline-flex',
             alignItems: 'center',
             justifyContent: 'center',
-            height: '28px',
-            padding: '0 8px',
-            borderRadius: '4px',
-            background: 'rgba(55, 53, 47, 0.08)',
-            color: '#37352f',
-            fontSize: '14px',
-            fontWeight: '500',
+            height: '32px',
+            padding: '0 14px',
+            borderRadius: '8px',
+            fontSize: '13px',
+            fontWeight: '600',
             cursor: 'pointer',
             userSelect: 'none',
-            transition: 'background 0.1s ease',
-            whiteSpace: 'nowrap'
-        });
+            transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
+            whiteSpace: 'nowrap',
+            position: 'relative',
+            overflow: 'hidden',
+            fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
+            letterSpacing: '0.3px'
+        };
 
-        btn.onmouseenter = () => btn.style.background = 'rgba(55, 53, 47, 0.16)';
-        btn.onmouseleave = () => btn.style.background = 'rgba(55, 53, 47, 0.08)';
+        if (variant === 'primary') {
+            // Primary button - gradient glassmorphism
+            Object.assign(btn.style, {
+                ...baseStyles,
+                background: 'linear-gradient(135deg, rgba(99, 102, 241, 0.9) 0%, rgba(139, 92, 246, 0.9) 100%)',
+                backdropFilter: 'blur(10px)',
+                WebkitBackdropFilter: 'blur(10px)',
+                color: 'white',
+                border: '1px solid rgba(255, 255, 255, 0.3)',
+                boxShadow: '0 4px 15px 0 rgba(99, 102, 241, 0.4), inset 0 1px 0 rgba(255, 255, 255, 0.2)'
+            });
+
+            btn.onmouseenter = () => {
+                btn.style.transform = 'translateY(-2px) scale(1.02)';
+                btn.style.boxShadow = '0 8px 25px 0 rgba(99, 102, 241, 0.5), inset 0 1px 0 rgba(255, 255, 255, 0.3)';
+            };
+
+            btn.onmouseleave = () => {
+                btn.style.transform = 'translateY(0) scale(1)';
+                btn.style.boxShadow = '0 4px 15px 0 rgba(99, 102, 241, 0.4), inset 0 1px 0 rgba(255, 255, 255, 0.2)';
+            };
+
+        } else {
+            // Secondary button - subtle glassmorphism
+            Object.assign(btn.style, {
+                ...baseStyles,
+                background: 'rgba(255, 255, 255, 0.7)',
+                backdropFilter: 'blur(10px)',
+                WebkitBackdropFilter: 'blur(10px)',
+                color: '#4b5563',
+                border: '1px solid rgba(255, 255, 255, 0.5)',
+                boxShadow: '0 2px 8px 0 rgba(31, 38, 135, 0.1), inset 0 1px 0 rgba(255, 255, 255, 0.5)'
+            });
+
+            btn.onmouseenter = () => {
+                btn.style.background = 'rgba(255, 255, 255, 0.9)';
+                btn.style.transform = 'translateY(-1px)';
+                btn.style.boxShadow = '0 4px 12px 0 rgba(31, 38, 135, 0.15), inset 0 1px 0 rgba(255, 255, 255, 0.6)';
+            };
+
+            btn.onmouseleave = () => {
+                btn.style.background = 'rgba(255, 255, 255, 0.7)';
+                btn.style.transform = 'translateY(0)';
+                btn.style.boxShadow = '0 2px 8px 0 rgba(31, 38, 135, 0.1), inset 0 1px 0 rgba(255, 255, 255, 0.5)';
+            };
+        }
+
+        // Active state
+        btn.onmousedown = () => {
+            btn.style.transform = 'scale(0.96)';
+        };
+
+        btn.onmouseup = () => {
+            btn.style.transform = variant === 'primary' ? 'translateY(-2px) scale(1.02)' : 'translateY(-1px)';
+        };
 
         btn.onclick = (e) => {
             e.stopPropagation();
+
+            // Ripple effect
+            const ripple = document.createElement('span');
+            const rect = btn.getBoundingClientRect();
+            const size = Math.max(rect.width, rect.height);
+            const x = e.clientX - rect.left - size / 2;
+            const y = e.clientY - rect.top - size / 2;
+
+            Object.assign(ripple.style, {
+                position: 'absolute',
+                width: size + 'px',
+                height: size + 'px',
+                borderRadius: '50%',
+                background: variant === 'primary' ? 'rgba(255, 255, 255, 0.5)' : 'rgba(99, 102, 241, 0.3)',
+                left: x + 'px',
+                top: y + 'px',
+                transform: 'scale(0)',
+                animation: 'ripple 0.6s ease-out',
+                pointerEvents: 'none'
+            });
+
+            btn.appendChild(ripple);
+            setTimeout(() => ripple.remove(), 600);
+
             onClick();
         };
+
+        // Add ripple animation
+        if (!document.getElementById('smith-ripple-animation')) {
+            const style = document.createElement('style');
+            style.id = 'smith-ripple-animation';
+            style.textContent = `
+                @keyframes ripple {
+                    to {
+                        transform: scale(4);
+                        opacity: 0;
+                    }
+                }
+            `;
+            document.head.appendChild(style);
+        }
 
         return btn;
     }
 
-    async function runToolkitGen(action, type) {
-        showToast('Generating... (Please wait)', 'info');
-        try {
-            const res = await chrome.runtime.sendMessage({ action, toolType: type });
-            if (res && res.success && res.doc) {
-                const bodyBlock = document.querySelector('.notion-page-content [data-content-editable-leaf="true"]');
-                if (bodyBlock) {
-                    simulateTyping(bodyBlock, res.doc);
-                }
-                showToast('Content Created!', 'success');
-            } else {
-                showToast('Generation failed', 'error');
-            }
-        } catch (e) {
-            showToast('Error: ' + e.message, 'error');
-        }
-    }
-
-    // --- Shared Logic (Preserved) ---
+    // --- Shared Logic ---
 
     function scrapeStrategies() {
         const rows = document.querySelectorAll('.notion-table-view .notion-table-row');
@@ -193,58 +395,99 @@
 
         if (newBtn) {
             newBtn.click();
-            await new Promise(r => setTimeout(r, 1000));
+            await sleep(1000);
+
             const titleInput = document.querySelector('div.notion-page-content-placeholder + div [contenteditable="true"]') ||
                 document.querySelector('.notion-overlay-container [contenteditable="true"]');
-            if (titleInput) simulateTyping(titleInput, `Report: ${new Date().toLocaleDateString()}`);
+
+            if (titleInput) {
+                await insertContentIntoNotion.call({ target: titleInput }, `Report: ${new Date().toLocaleDateString()}`);
+            }
         }
 
-        const bodyBlock = document.querySelector('.notion-page-content [data-content-editable-leaf="true"]');
-        if (bodyBlock) {
-            bodyBlock.click();
-            await new Promise(r => setTimeout(r, 500));
-
-            const reportText = `
+        const reportText = `
 DAILY REPORT - ${new Date().toLocaleTimeString()}
 -------------------------
 Generated: ${stats.generated || 0}
 Posted:    ${stats.posted || 0}
 -------------------------
+By Style:
+${Object.entries(stats.byStyle || {}).map(([style, count]) => `  ${style}: ${count}`).join('\n')}
 `;
-            simulateTyping(document.activeElement || bodyBlock, reportText);
-            return { success: true, message: 'Report typed into page.' };
-        }
-        return { success: false, message: 'Could not find writable area.' };
+
+        const success = await insertContentIntoNotion(reportText);
+
+        return {
+            success,
+            message: success ? 'Report created!' : 'Could not insert report'
+        };
     }
 
-    function simulateTyping(element, text) {
-        element.focus();
-        element.innerText = text;
-        element.dispatchEvent(new Event('input', { bubbles: true }));
-    }
-
+    // ✅ IMPROVED: Toast notifications with glassmorphism
     function showToast(message, type = 'info') {
+        // Remove existing toasts
+        document.querySelectorAll('.smith-toast').forEach(t => t.remove());
+
         const toast = document.createElement('div');
+        toast.className = 'smith-toast';
         toast.innerText = message;
+
+        const colors = {
+            success: { bg: 'rgba(16, 185, 129, 0.95)', border: 'rgba(16, 185, 129, 0.5)' },
+            error: { bg: 'rgba(239, 68, 68, 0.95)', border: 'rgba(239, 68, 68, 0.5)' },
+            info: { bg: 'rgba(59, 130, 246, 0.95)', border: 'rgba(59, 130, 246, 0.5)' }
+        };
+
+        const color = colors[type] || colors.info;
+
         Object.assign(toast.style, {
             position: 'fixed',
-            bottom: '70px',
+            bottom: '80px',
             right: '20px',
-            background: type === 'error' ? 'white' : 'black',
-            color: type === 'error' ? 'black' : 'white',
-            border: '1px solid white',
-            padding: '8px 12px',
-            borderRadius: '6px',
-            fontSize: '12px',
+            background: color.bg,
+            backdropFilter: 'blur(10px)',
+            WebkitBackdropFilter: 'blur(10px)',
+            color: 'white',
+            border: `1px solid ${color.border}`,
+            padding: '12px 20px',
+            borderRadius: '10px',
+            fontSize: '13px',
+            fontWeight: '600',
             zIndex: '10000',
-            boxShadow: '0 2px 8px rgba(0,0,0,0.3)',
-            fontFamily: 'sans-serif'
+            boxShadow: '0 8px 32px 0 rgba(31, 38, 135, 0.3), inset 0 1px 0 rgba(255, 255, 255, 0.2)',
+            fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
+            animation: 'slideInUp 0.3s ease-out',
+            letterSpacing: '0.3px'
         });
+
+        // Add slide-in animation
+        if (!document.getElementById('smith-toast-animation')) {
+            const style = document.createElement('style');
+            style.id = 'smith-toast-animation';
+            style.textContent = `
+                @keyframes slideInUp {
+                    from {
+                        transform: translateY(100px);
+                        opacity: 0;
+                    }
+                    to {
+                        transform: translateY(0);
+                        opacity: 1;
+                    }
+                }
+            `;
+            document.head.appendChild(style);
+        }
+
         document.body.appendChild(toast);
-        setTimeout(() => toast.remove(), 3000);
+
+        setTimeout(() => {
+            toast.style.animation = 'slideInUp 0.3s ease-out reverse';
+            setTimeout(() => toast.remove(), 300);
+        }, 3000);
     }
 
-    // Keep Listener for Popup Interaction
+    // Message Listener
     chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
         if (request.action === 'scrapeNotionStrategies') {
             sendResponse({ success: true, strategies: scrapeStrategies() });
@@ -255,5 +498,7 @@ Posted:    ${stats.posted || 0}
             sendResponse({ isNotion: true, title: document.title });
         }
     });
+
+    console.log('SMITH ai: Fully initialized with glassmorphism UI');
 
 })();
