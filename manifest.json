@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
-  "name": "Instagram AI Comment Assistant",
-  "version": "1.0.0",
-  "description": "Generate AI-powered contextual comments for Instagram using DeepSeek, GPT-5.2, or Claude via NEAR AI Cloud",
+  "name": "SMITH ai",
+  "version": "2.0.0",
+  "description": "The ultimate social media AI agent. Organizes Notion, posts on Instagram & X, and manages your brand strategy.",
   "permissions": [
     "storage",
     "activeTab",
@@ -10,10 +10,13 @@
   ],
   "host_permissions": [
     "https://www.instagram.com/*",
+    "https://twitter.com/*",
+    "https://x.com/*",
+    "https://www.notion.so/*",
     "https://cloud-api.near.ai/*"
   ],
   "background": {
-    "service_worker": "background.js"
+    "service_worker": "src/background/background.js"
   },
   "content_scripts": [
     {
@@ -21,28 +24,55 @@
         "https://www.instagram.com/*"
       ],
       "js": [
-        "content.js"
+        "src/features/instagram/content-utils.js",
+        "src/features/instagram/content-extractor.js",
+        "src/features/instagram/content-actions.js",
+        "src/features/instagram/content-autopilot.js",
+        "src/features/instagram/content.js"
       ],
       "css": [
-        "modal.css"
+        "src/styles/modal.css"
+      ],
+      "run_at": "document_idle"
+    },
+    {
+      "matches": [
+        "https://twitter.com/*",
+        "https://x.com/*"
+      ],
+      "js": [
+        "src/features/twitter/twitter-utils.js",
+        "src/features/twitter/twitter-extractor.js",
+        "src/features/twitter/twitter-actions.js",
+        "src/features/twitter/twitter-autopilot.js",
+        "src/features/twitter/content.js"
+      ],
+      "run_at": "document_idle"
+    },
+    {
+      "matches": [
+        "https://www.notion.so/*"
+      ],
+      "js": [
+        "src/features/notion/content.js"
       ],
       "run_at": "document_idle"
     }
   ],
   "action": {
-    "default_popup": "popup.html",
+    "default_popup": "src/popup/popup.html",
     "default_icon": {
-      "16": "icons/icon16.png",
-      "32": "icons/icon32.png",
-      "48": "icons/icon48.png",
-      "128": "icons/icon128.png"
+      "16": "assets/icons/icon16.png",
+      "32": "assets/icons/icon32.png",
+      "48": "assets/icons/icon48.png",
+      "128": "assets/icons/icon128.png"
     }
   },
   "icons": {
-    "16": "icons/icon16.png",
-    "32": "icons/icon32.png",
-    "48": "icons/icon48.png",
-    "128": "icons/icon128.png"
+    "16": "assets/icons/icon16.png",
+    "32": "assets/icons/icon32.png",
+    "48": "assets/icons/icon48.png",
+    "128": "assets/icons/icon128.png"
   },
   "commands": {
     "generate-comment": {
@@ -50,7 +80,7 @@
         "default": "Ctrl+Shift+G",
         "mac": "Command+Shift+G"
       },
-      "description": "Generate AI comment for focused post"
+      "description": "Generate AI action for focused content"
     }
   }
 }

@@ -1,0 +1,194 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>SMITH ai Assistant</title>
+  <link rel="stylesheet" href="popup.css">
+</head>
+
+<body>
+  <div class="popup-container">
+    <header class="popup-header">
+      <div class="logo">
+        <h1>SMITH ai</h1>
+      </div>
+      <p class="subtitle">Social Media Agent</p>
+    </header>
+
+    <main class="popup-content">
+      <!-- Tabs -->
+      <div class="tabs">
+        <button class="tab-btn active" data-tab="instagram">Instagram</button>
+        <button class="tab-btn" data-tab="twitter">X / Twitter</button>
+        <button class="tab-btn" data-tab="notion">Notion</button>
+      </div>
+
+      <!-- Tab Content: Instagram -->
+      <div id="instagram-tab" class="tab-content active">
+        <!-- Autonomous Mode (Instagram) -->
+        <section class="settings-section autonomous-section glass-card">
+          <div class="glass-header">
+            <h2>Auto Pilot (IG)</h2>
+            <span class="status-badge" id="igAutoStatusBadge">READY</span>
+          </div>
+
+          <div class="glass-body">
+            <div class="progress-container">
+              <div class="progress-circle" id="igProgressCircle" style="--progress: 0deg;">
+                <div class="inner-circle">
+                  <span id="igProgressText">0/20</span>
+                  <span class="progress-label">POSTED</span>
+                </div>
+              </div>
+            </div>
+
+            <div class="control-row">
+              <div class="input-wrapper">
+                <label>Posts</label>
+                <input type="number" id="igPostLimit" value="20" min="1" max="100">
+              </div>
+              <button id="igAutoStartBtn" class="btn-glass-action">START</button>
+            </div>
+          </div>
+        </section>
+      </div>
+
+      <!-- Tab Content: Twitter -->
+      <div id="twitter-tab" class="tab-content" style="display: none;">
+        <!-- Autonomous Mode (Twitter) -->
+        <section class="settings-section autonomous-section glass-card">
+          <div class="glass-header">
+            <h2>Auto Pilot (X)</h2>
+            <span class="status-badge" id="twAutoStatusBadge">READY</span>
+          </div>
+          <div class="glass-body">
+            <div class="progress-container">
+              <div class="progress-circle" id="twProgressCircle" style="--progress: 0deg;">
+                <div class="inner-circle">
+                  <span id="twProgressText">0/20</span>
+                  <span class="progress-label">POSTED</span>
+                </div>
+              </div>
+            </div>
+
+            <div class="control-row">
+              <div class="input-wrapper">
+                <label>Posts</label>
+                <input type="number" id="twPostLimit" value="20" min="1" max="100">
+              </div>
+              <button id="twAutoStartBtn" class="btn-glass-action">START</button>
+            </div>
+          </div>
+        </section>
+      </div>
+
+      <!-- Tab Content: Notion -->
+      <div id="notion-tab" class="tab-content" style="display: none;">
+        <div class="glass-card">
+          <div class="glass-header">
+            <h2>Page Analysis</h2>
+            <span class="status-badge" id="notionPageStatus">NO PAGE</span>
+          </div>
+          <div class="glass-body">
+            <p class="api-help" id="notionPageTitle">Open Notion to capture.</p>
+            <div class="control-row">
+              <button id="scrapeNotionBtn" class="btn-glass-action" disabled>Capture Strategies</button>
+              <button id="pushNotionBtn" class="btn-glass-action" disabled>Push Report</button>
+            </div>
+          </div>
+        </div>
+
+        <div class="glass-card">
+          <div class="glass-header">
+            <h2>Captured Strategies</h2>
+          </div>
+          <div class="glass-body" id="capturedStrategiesList">
+            <div class="info-box">None yet.</div>
+          </div>
+        </div>
+      </div>
+
+
+      <!-- Shared Settings -->
+      <hr class="divider">
+
+      <!-- API Key -->
+      <section class="settings-section">
+        <h2>NEAR AI API Key</h2>
+        <div class="api-key-input">
+          <input type="password" id="apiKey" placeholder="Enter your NEAR AI Cloud API key">
+          <button type="button" id="toggleKey" class="toggle-key-btn">Show</button>
+        </div>
+      </section>
+
+      <!-- Model Selection -->
+      <section class="settings-section">
+        <h2>AI Model</h2>
+        <div class="provider-cards">
+          <label class="provider-card" data-provider="deepseek-ai/DeepSeek-V3.1">
+            <input type="radio" name="provider" value="deepseek-ai/DeepSeek-V3.1">
+            <div class="provider-info">
+              <span class="provider-name">DeepSeek V3.1</span>
+              <span class="subtitle">128K • $1.05/M • TEE Privacy</span>
+            </div>
+            <span class="provider-check">Selected</span>
+          </label>
+          <label class="provider-card" data-provider="openai/gpt-5.2">
+            <input type="radio" name="provider" value="openai/gpt-5.2">
+            <div class="provider-info">
+              <span class="provider-name">OpenAI GPT-5.2</span>
+              <span class="subtitle">400K • $1.8/M • Reasoning</span>
+            </div>
+            <span class="provider-check">Selected</span>
+          </label>
+          <label class="provider-card" data-provider="anthropic/claude-sonnet-4-5">
+            <input type="radio" name="provider" value="anthropic/claude-sonnet-4-5">
+            <div class="provider-info">
+              <span class="provider-name">Claude Sonnet 4.5</span>
+              <span class="subtitle">200K • $3/M • Creative</span>
+            </div>
+            <span class="provider-check">Selected</span>
+          </label>
+        </div>
+      </section>
+
+      <!-- Default Style -->
+      <section class="settings-section">
+        <h2>Persona / Style</h2>
+        <select id="defaultStyle">
+          <option value="friendly">Friendly</option>
+          <option value="professional">Professional</option>
+          <option value="witty">Witty (X Style)</option>
+          <option value="custom">Custom</option>
+        </select>
+      </section>
+
+      <!-- Global Instructions -->
+      <section class="settings-section">
+        <h2>Content Instructions</h2>
+        <textarea id="instructions" placeholder="E.g. No emojis, Keep it short, Mention the design..."></textarea>
+        <p class="api-help">Applies to all styles</p>
+      </section>
+
+      <!-- Custom Prompt -->
+      <section class="settings-section custom-prompt-section" id="customPromptSection" style="display: none;">
+        <h2>Custom Prompt</h2>
+        <textarea id="customPrompt" placeholder="Describe your persona..."></textarea>
+      </section>
+
+      <!-- Buttons -->
+      <div class="button-group">
+        <button id="saveBtn" class="btn-primary">Save Settings</button>
+      </div>
+
+      <!-- Status Message -->
+      <div id="statusMessage" class="status-message"></div>
+    </main>
+  </div>
+
+  <script src="popup.js"></script>
+</body>
+
+</html>
