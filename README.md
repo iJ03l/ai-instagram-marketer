@@ -1,10 +1,10 @@
-# SMITH ai 🤖
+# Crixen 🤖
 
 **The Ultimate Social Media AI Agent.**
 
-SMITH ai is your autonomous partner for digital growth. It organizes your Notion workspace, manages your social media strategy, and engages with your audience on Instagram and X (Twitter) — all powered by advanced AI models via NEAR AI Cloud.
+Crixen is your autonomous partner for digital growth. It organizes your Notion workspace, manages your social media strategy, and engages with your audience on Instagram and X (Twitter) — all powered by advanced AI models via NEAR AI Cloud.
 
-![SMITH ai Banner](assets/icons/icon128.png)
+![Crixen Banner](assets/icons/icon128.png)
 
 ## Features
 
@@ -34,7 +34,7 @@ SMITH ai is your autonomous partner for digital growth. It organizes your Notion
 
 ## Configuration
 
-1.  Click the SMITH ai icon in your toolbar.
+1.  Click the Crixen icon in your toolbar.
 2.  Enter your **NEAR AI Cloud API Key**.
 3.  Select your preferred model (DeepSeek, GPT-5.2, Claude).
 4.  Choose your default persona (Friendly, Professional, Witty, etc.).
@@ -43,7 +43,7 @@ SMITH ai is your autonomous partner for digital growth. It organizes your Notion
 
 -   **Instagram**: Look for the "AI Comment" button on posts, or use the Auto-Pilot feature in the popup.
 -   **X**: (Coming Soon) Use the "Smith Reply" button on tweets.
--   **Notion**: (Coming Soon) Open the Smith sidebar to organize content.
+-   **Notion**: (Coming Soon) Open the Crixen sidebar to organize content.
 
 ## License
 

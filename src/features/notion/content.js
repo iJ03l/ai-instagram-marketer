@@ -1,9 +1,9 @@
-// SMITH ai - Notion Integration (Native UI Injection)
+// Crixen - Notion Integration (Native UI Injection)
 
 (function () {
     'use strict';
 
-    console.log('SMITH ai: Notion Native Script Loaded');
+    console.log('Crixen: Notion Native Script Loaded');
 
     // Wait for Notion to load and observe changes
     const observer = new MutationObserver(() => {
@@ -33,7 +33,7 @@
         if (!actionsContainer) return;
 
         // Check if our container already exists
-        if (document.getElementById('smith-ai-controls')) return;
+        if (document.getElementById('crixen-ai-controls')) return;
 
         // Determine Context
         const context = analyzeContext();
@@ -42,7 +42,7 @@
 
         // Create Container with glassmorphism
         const container = document.createElement('div');
-        container.id = 'smith-ai-controls';
+        container.id = 'crixen-ai-controls';
         Object.assign(container.style, {
             display: 'flex',
             alignItems: 'center',
@@ -115,7 +115,7 @@
             const res = await chrome.runtime.sendMessage(message);
 
             if (res && res.success && res.doc) {
-                console.log('[SMITH] Received content:', res.doc.substring(0, 100));
+                console.log('[CRIXEN] Received content:', res.doc.substring(0, 100));
 
                 // ✅ IMPROVED: Better Notion content insertion
                 const success = await insertContentIntoNotion(res.doc);
@@ -129,14 +129,14 @@
                 showToast('Generation failed: ' + (res?.error || 'Unknown error'), 'error');
             }
         } catch (e) {
-            console.error('[SMITH] Generation error:', e);
+            console.error('[CRIXEN] Generation error:', e);
             showToast('Error: ' + e.message, 'error');
         }
     }
 
     // ✅ COMPLETELY REWRITTEN: Notion content insertion
     async function insertContentIntoNotion(markdownContent) {
-        console.log('[SMITH] Inserting content into Notion...');
+        console.log('[CRIXEN] Inserting content into Notion...');
 
         // Method 1: Try to find the main content editable area
         let target = document.querySelector('.notion-page-content [contenteditable="true"]');
@@ -152,11 +152,11 @@
         }
 
         if (!target) {
-            console.error('[SMITH] No editable area found');
+            console.error('[CRIXEN] No editable area found');
             return false;
         }
 
-        console.log('[SMITH] Found target:', target);
+        console.log('[CRIXEN] Found target:', target);
 
         // Focus and wait
         target.click();
@@ -175,9 +175,9 @@
 
                 // Insert new content
                 success = document.execCommand('insertText', false, markdownContent);
-                console.log('[SMITH] execCommand result:', success);
+                console.log('[CRIXEN] execCommand result:', success);
             } catch (e) {
-                console.error('[SMITH] execCommand failed:', e);
+                console.error('[CRIXEN] execCommand failed:', e);
             }
         }
 
@@ -194,9 +194,9 @@
                 target.dispatchEvent(pasteEvent);
 
                 success = true;
-                console.log('[SMITH] Paste event dispatched');
+                console.log('[CRIXEN] Paste event dispatched');
             } catch (e) {
-                console.error('[SMITH] Paste event failed:', e);
+                console.error('[CRIXEN] Paste event failed:', e);
             }
         }
 
@@ -211,9 +211,9 @@
                 target.dispatchEvent(new Event('change', { bubbles: true }));
 
                 success = true;
-                console.log('[SMITH] Direct manipulation completed');
+                console.log('[CRIXEN] Direct manipulation completed');
             } catch (e) {
-                console.error('[SMITH] Direct manipulation failed:', e);
+                console.error('[CRIXEN] Direct manipulation failed:', e);
             }
         }
 
@@ -247,7 +247,7 @@
     function createButton(text, onClick, icon, variant = 'secondary') {
         const btn = document.createElement('div');
         btn.role = 'button';
-        btn.className = 'smith-notion-btn';
+        btn.className = 'crixen-notion-btn';
         btn.innerHTML = `<span style="font-size: 16px; margin-right: 6px;">${icon}</span><span>${text}</span>`;
 
         // Glassmorphism base styles
@@ -360,9 +360,9 @@
         };
 
         // Add ripple animation
-        if (!document.getElementById('smith-ripple-animation')) {
+        if (!document.getElementById('crixen-ripple-animation')) {
             const style = document.createElement('style');
-            style.id = 'smith-ripple-animation';
+            style.id = 'crixen-ripple-animation';
             style.textContent = `
                 @keyframes ripple {
                     to {
@@ -430,10 +430,10 @@ ${Object.entries(stats.byStyle || {}).map(([style, count]) => `  ${style}: ${cou
     // ✅ IMPROVED: Toast notifications with glassmorphism
     function showToast(message, type = 'info') {
         // Remove existing toasts
-        document.querySelectorAll('.smith-toast').forEach(t => t.remove());
+        document.querySelectorAll('.crixen-toast').forEach(t => t.remove());
 
         const toast = document.createElement('div');
-        toast.className = 'smith-toast';
+        toast.className = 'crixen-toast';
         toast.innerText = message;
 
         const colors = {
@@ -465,9 +465,9 @@ ${Object.entries(stats.byStyle || {}).map(([style, count]) => `  ${style}: ${cou
         });
 
         // Add slide-in animation
-        if (!document.getElementById('smith-toast-animation')) {
+        if (!document.getElementById('crixen-toast-animation')) {
             const style = document.createElement('style');
-            style.id = 'smith-toast-animation';
+            style.id = 'crixen-toast-animation';
             style.textContent = `
                 @keyframes slideInUp {
                     from {
@@ -503,6 +503,6 @@ ${Object.entries(stats.byStyle || {}).map(([style, count]) => `  ${style}: ${cou
         }
     });
 
-    console.log('SMITH ai: Fully initialized with glassmorphism UI');
+    console.log('Crixen: Fully initialized with glassmorphism UI');
 
 })();

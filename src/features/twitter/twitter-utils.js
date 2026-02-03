@@ -1,13 +1,13 @@
-// SMITH ai - Twitter Utilities
+// Crixen - Twitter Utilities
 
 (function () {
     'use strict';
 
     // Initialize Global Namespace
-    window.SmithTwitter = window.SmithTwitter || {};
+    window.CrixenTwitter = window.CrixenTwitter || {};
 
     // Shared State
-    window.SmithTwitter.state = {
+    window.CrixenTwitter.state = {
         currentTweet: null,
         settings: null,
         isProcessing: false,
@@ -18,7 +18,7 @@
 
     // --- UTILITIES ---
 
-    window.SmithTwitter.isExtensionValid = function () {
+    window.CrixenTwitter.isExtensionValid = function () {
         try {
             chrome.runtime.id;
             return true;
@@ -27,27 +27,27 @@
         }
     };
 
-    window.SmithTwitter.loadSettings = async function () {
-        if (!window.SmithTwitter.isExtensionValid()) return;
+    window.CrixenTwitter.loadSettings = async function () {
+        if (!window.CrixenTwitter.isExtensionValid()) return;
         return new Promise((resolve) => {
             try {
                 chrome.runtime.sendMessage({ action: 'getSettings' }, (response) => {
                     if (chrome.runtime.lastError) {
                         resolve(); return;
                     }
-                    window.SmithTwitter.state.settings = response?.settings || { defaultStyle: 'witty' };
+                    window.CrixenTwitter.state.settings = response?.settings || { defaultStyle: 'witty' };
                     resolve();
                 });
             } catch (e) { resolve(); }
         });
     };
 
-    window.SmithTwitter.showToast = function (message, type = 'info') {
-        const existing = document.querySelectorAll('.smith-toast-message');
+    window.CrixenTwitter.showToast = function (message, type = 'info') {
+        const existing = document.querySelectorAll('.crixen-toast-message');
         existing.forEach(el => el.remove());
 
         const toast = document.createElement('div');
-        toast.className = 'smith-toast-message';
+        toast.className = 'crixen-toast-message';
         toast.textContent = message;
         toast.style.position = 'fixed';
         toast.style.bottom = '20px';
@@ -77,11 +77,11 @@
         }, 4000);
     };
 
-    window.SmithTwitter.sleep = function (ms) {
+    window.CrixenTwitter.sleep = function (ms) {
         return new Promise(resolve => setTimeout(resolve, ms));
     };
 
-    window.SmithTwitter.isElementVisible = function (el) {
+    window.CrixenTwitter.isElementVisible = function (el) {
         if (!el) return false;
         if (el.offsetParent === null) return false;
         const style = window.getComputedStyle(el);

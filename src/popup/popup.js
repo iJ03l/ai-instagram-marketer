@@ -1,4 +1,4 @@
-// SMITH ai - Popup Script
+// Crixen - Popup Script
 // Using NEAR AI Cloud API
 
 document.addEventListener('DOMContentLoaded', init);

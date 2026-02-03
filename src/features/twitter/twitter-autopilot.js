@@ -1,13 +1,13 @@
-// SMITH ai - Twitter Autopilot
+// Crixen - Twitter Autopilot
 
 (function () {
     'use strict';
 
-    window.SmithTwitter = window.SmithTwitter || {};
-    const utils = window.SmithTwitter;
-    const state = window.SmithTwitter.state;
+    window.CrixenTwitter = window.CrixenTwitter || {};
+    const utils = window.CrixenTwitter;
+    const state = window.CrixenTwitter.state;
 
-    window.SmithTwitter.startAutoPilot = function (limit) {
+    window.CrixenTwitter.startAutoPilot = function (limit) {
         if (state.isAutoPilot) return;
         state.isAutoPilot = true;
         state.autoLimit = limit || 20;
@@ -16,7 +16,7 @@
         autoLoop();
     };
 
-    window.SmithTwitter.stopAutoPilot = function () {
+    window.CrixenTwitter.stopAutoPilot = function () {
         state.isAutoPilot = false;
         utils.showToast('🛑 X Auto-Pilot Stopped', 'warning');
     };
@@ -29,7 +29,7 @@
             let target = null;
 
             for (const t of tweets) {
-                if (!t.dataset.smithProcessed && utils.isElementVisible(t)) {
+                if (!t.dataset.crixenProcessed && utils.isElementVisible(t)) {
                     // Check if it's an ad?
                     if (t.textContent.includes('Ad')) continue;
                     target = t;
@@ -50,10 +50,10 @@
             await utils.sleep(1000);
 
             // 4. Process (Reply)
-            await window.SmithTwitter.handleReply(target);
+            await window.CrixenTwitter.handleReply(target);
 
             // 5. Mark done
-            target.dataset.smithProcessed = 'true';
+            target.dataset.crixenProcessed = 'true';
             target.style.borderLeft = 'none';
             state.autoCount++;
 

@@ -1,15 +1,15 @@
-// SMITH ai - Twitter Actions
+// Crixen - Twitter Actions
 
 (function () {
     'use strict';
 
-    window.SmithTwitter = window.SmithTwitter || {};
-    const utils = window.SmithTwitter;
-    const state = window.SmithTwitter.state;
+    window.CrixenTwitter = window.CrixenTwitter || {};
+    const utils = window.CrixenTwitter;
+    const state = window.CrixenTwitter.state;
 
     // --- TYPING ---
     // Reusing the robust typing simulation from Instagram
-    window.SmithTwitter.simulateTyping = async function (element, text) {
+    window.CrixenTwitter.simulateTyping = async function (element, text) {
         element.focus();
         document.execCommand('selectAll', false, null);
         document.execCommand('insertText', false, text);
@@ -20,7 +20,7 @@
 
     // --- ACTIONS ---
 
-    window.SmithTwitter.handleReply = async function (tweet) {
+    window.CrixenTwitter.handleReply = async function (tweet) {
         if (state.isProcessing) return;
         state.isProcessing = true;
         state.currentTweet = tweet;
@@ -76,7 +76,7 @@
         }
     };
 
-    window.SmithTwitter.handleQuote = async function (tweet) {
+    window.CrixenTwitter.handleQuote = async function (tweet) {
         if (state.isProcessing) return;
         state.isProcessing = true;
 

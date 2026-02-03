@@ -1,11 +1,11 @@
-// SMITH ai - Twitter Content Extractor
+// Crixen - Twitter Content Extractor
 
 (function () {
     'use strict';
 
-    window.SmithTwitter = window.SmithTwitter || {};
+    window.CrixenTwitter = window.CrixenTwitter || {};
 
-    window.SmithTwitter.extractTweetContent = function (tweetElement) {
+    window.CrixenTwitter.extractTweetContent = function (tweetElement) {
         const parts = [];
 
         // 1. Author

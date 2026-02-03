@@ -1,16 +1,16 @@
-// SMITH ai - Twitter Entry Point
+// Crixen - Twitter Entry Point
 
 (function () {
     'use strict';
 
-    window.SmithTwitter = window.SmithTwitter || {};
-    const utils = window.SmithTwitter;
+    window.CrixenTwitter = window.CrixenTwitter || {};
+    const utils = window.CrixenTwitter;
 
     // Init
     init();
 
     function init() {
-        console.log('SMITH ai: Twitter Initialized');
+        console.log('Crixen: Twitter Initialized');
         utils.loadSettings();
         observeDOM();
 
@@ -35,7 +35,7 @@
         const tweets = document.querySelectorAll('article[data-testid="tweet"]');
 
         tweets.forEach(tweet => {
-            if (tweet.dataset.smithProcessed) return;
+            if (tweet.dataset.crixenProcessed) return;
 
             const actionsBar = tweet.querySelector('[role="group"]');
             if (actionsBar) {
@@ -55,7 +55,7 @@
                 };
                 actionsBar.appendChild(quoteBtn);
 
-                tweet.dataset.smithProcessed = 'true';
+                tweet.dataset.crixenProcessed = 'true';
             }
         });
     }
@@ -64,7 +64,7 @@
         const btn = document.createElement('div');
         btn.innerText = `🤖 ${text}`; // Robot emoji okay in page injection
         btn.style.cssText = 'color: #1d9bf0; font-weight: bold; font-size: 13px; cursor: pointer; margin-left: 12px; display: inline-flex; align-items: center;';
-        btn.className = 'smith-ai-btn';
+        btn.className = 'crixen-ai-btn';
         return btn;
     }
 
@@ -77,7 +77,7 @@
             if (utils.stopAutoPilot) utils.stopAutoPilot();
             sendResponse({ success: true });
         } else if (request.action === 'getAutoStatus') {
-            const state = window.SmithTwitter.state || {};
+            const state = window.CrixenTwitter.state || {};
             sendResponse({
                 isRunning: state.isAutoPilot || false,
                 limit: state.autoLimit || 20,
