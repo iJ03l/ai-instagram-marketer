@@ -22,6 +22,16 @@
         debounceTimeout = setTimeout(addCustomButtons, 500);
     }
 
+    // Icons
+    const ICONS = {
+        strategy: `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="2"/></svg>`,
+        calendar: `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>`,
+        audit: `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>`,
+        influencer: `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>`,
+        capture: `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>`,
+        report: `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>`
+    };
+
     function addCustomButtons() {
         // Target the top bar action area
         const topbar = document.querySelector('.notion-topbar');
@@ -40,26 +50,19 @@
 
         if (context.type === 'none') return;
 
-        // Create Container with glassmorphism
+        // Create Container - Minimal (No Glassmorphism)
         const container = document.createElement('div');
         container.id = 'crixen-ai-controls';
         Object.assign(container.style, {
             display: 'flex',
             alignItems: 'center',
-            gap: '8px',
+            gap: '4px',
             marginRight: '12px',
-            padding: '6px 12px',
-            borderRadius: '12px',
-            background: 'rgba(255, 255, 255, 0.25)',
-            backdropFilter: 'blur(10px)',
-            WebkitBackdropFilter: 'blur(10px)',
-            border: '1px solid rgba(255, 255, 255, 0.3)',
-            boxShadow: '0 8px 32px 0 rgba(31, 38, 135, 0.15)'
         });
 
         // Add Context-Specific Buttons
         if (context.type === 'table') {
-            container.appendChild(createButton('Capture Strategies', async () => {
+            container.appendChild(createButton('Capture', async () => {
                 const strategies = scrapeStrategies();
                 if (strategies.length > 0) {
                     await chrome.runtime.sendMessage({ action: 'saveStrategies', strategies });
@@ -67,7 +70,7 @@
                 } else {
                     showToast('No valid rows found (Need Name & Prompt)', 'error');
                 }
-            }, '🎨', 'primary', 'Scrape strategies from this table'));
+            }, ICONS.capture, 'primary', 'Scrape strategies from this table'));
 
         } else if (context.type === 'empty') {
             // Strategy Button (Primary)
@@ -81,9 +84,10 @@
                 ];
                 const answers = await createInputModal('🎯 Brand Strategy Builder', questions);
                 if (answers) await generateAndInsertContent('generateStrategyDoc', 'Strategy', null, true, answers);
-            }, '✨', 'primary', 'Generate a full brand strategy document'));
+            }, ICONS.strategy, 'primary', 'Generate a full brand strategy document'));
 
             // Toolkit Buttons
+            // Calendar Tool
             container.appendChild(createButton('Calendar', async () => {
                 const questions = [
                     { id: 'brandName', label: 'Brand/Business Name', type: 'text', required: true },
@@ -93,8 +97,9 @@
                 ];
                 const answers = await createInputModal('📅 Content Calendar Setup', questions);
                 if (answers) await generateAndInsertContent('generateToolkit', 'Content Calendar', 'calendar', true, answers);
-            }, '📅', 'secondary', 'Create a social media content calendar'));
+            }, ICONS.calendar, 'secondary', 'Create a social media content calendar'));
 
+            // Audit Tool
             container.appendChild(createButton('Audit', async () => {
                 const questions = [
                     { id: 'brandName', label: 'Your Brand Name', type: 'text', required: true },
@@ -105,8 +110,9 @@
                 ];
                 const answers = await createInputModal('🔍 Competitor Audit Setup', questions);
                 if (answers) await generateAndInsertContent('generateToolkit', 'Competitor Audit', 'audit', true, answers);
-            }, '🔍', 'secondary', 'Generate a competitor analysis report'));
+            }, ICONS.audit, 'secondary', 'Generate a competitor analysis report'));
 
+            // Influencer Tool
             container.appendChild(createButton('Influencer', async () => {
                 const questions = [
                     { id: 'goal', label: 'Campaign Goal', type: 'select', options: ['Brand Awareness', 'Sales/Conversions', 'UGC Creation', 'Event Promotion'], required: true },
@@ -118,17 +124,17 @@
                 ];
                 const answers = await createInputModal('🤝 Influencer Campaign Setup', questions);
                 if (answers) await generateAndInsertContent('generateToolkit', 'Influencer Tracker', 'influencer', true, answers);
-            }, '🤝', 'secondary', 'Create an influencer tracking database'));
+            }, ICONS.influencer, 'secondary', 'Create an influencer tracking database'));
 
         } else {
             // Report context
-            container.appendChild(createButton('Push Report', async () => {
+            container.appendChild(createButton('Report', async () => {
                 showToast('Fetching stats...', 'info');
                 const response = await chrome.runtime.sendMessage({ action: 'getStats' });
                 const stats = response.stats || {};
                 const result = await pushReport(stats);
                 showToast(result.message || 'Done', result.success ? 'success' : 'error');
-            }, '📊', 'primary', 'Append daily stats to this page'));
+            }, ICONS.report, 'primary', 'Append daily stats to this page'));
         }
 
         // Insert into DOM
@@ -307,72 +313,44 @@
         return { type: 'none' };
     }
 
-    // ✅ REDESIGNED: Glassmorphism buttons with Tooltips
-    function createButton(text, onClick, icon, variant = 'secondary', description = '') {
+    // ✅ REDESIGNED: Minimal buttons (Native Feel) with SVG Icons
+    function createButton(text, onClick, iconSvg, variant = 'secondary', description = '') {
         const btn = document.createElement('div');
         btn.role = 'button';
         btn.className = 'crixen-notion-btn';
-        btn.innerHTML = `<span style="font-size: 16px; margin-right: 6px;">${icon}</span><span>${text}</span>`;
 
-        // Glassmorphism base styles
+        // Use SVG icon + Text
+        btn.innerHTML = `<span style="display:flex; align-items:center; margin-right: 6px; width:16px; height:16px;">${iconSvg}</span><span style="font-size:14px;">${text}</span>`;
+
+        // Minimal base styles
         const baseStyles = {
             display: 'inline-flex',
             alignItems: 'center',
             justifyContent: 'center',
-            height: '32px',
-            padding: '0 14px',
-            borderRadius: '8px',
-            fontSize: '13px',
-            fontWeight: '600',
+            height: '28px', // Slightly smaller for native feel
+            padding: '0 8px',
+            borderRadius: '4px', // Standard Notion Radius
+            fontSize: '14px',
+            fontWeight: '500', // Standard Notion weight
             cursor: 'pointer',
             userSelect: 'none',
-            transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
+            transition: 'background 0.1s ease',
             whiteSpace: 'nowrap',
             position: 'relative',
-            overflow: 'visible', // Changed to visible for tooltips
+            overflow: 'visible',
             fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
-            letterSpacing: '0.3px'
+            color: 'inherit', // Inherit Notion's text color
+            background: 'transparent' // Default transparent
         };
 
-        if (variant === 'primary') {
-            // Primary button - Black Glass
-            Object.assign(btn.style, {
-                ...baseStyles,
-                background: 'rgba(20, 20, 20, 0.85)',
-                backdropFilter: 'blur(12px)',
-                WebkitBackdropFilter: 'blur(12px)',
-                color: 'white',
-                border: '1px solid rgba(255, 255, 255, 0.15)',
-                boxShadow: '0 4px 16px 0 rgba(0, 0, 0, 0.3), inset 0 1px 0 rgba(255, 255, 255, 0.1)'
-            });
-        } else {
-            // Secondary button - Lighter Black Glass
-            Object.assign(btn.style, {
-                ...baseStyles,
-                background: 'rgba(40, 40, 40, 0.7)',
-                backdropFilter: 'blur(10px)',
-                WebkitBackdropFilter: 'blur(10px)',
-                color: '#e0e0e0',
-                border: '1px solid rgba(255, 255, 255, 0.1)',
-                boxShadow: '0 2px 8px 0 rgba(0, 0, 0, 0.2), inset 0 1px 0 rgba(255, 255, 255, 0.05)'
-            });
-        }
+        Object.assign(btn.style, baseStyles);
 
         // Tooltip Element
         let tooltip = null;
 
         btn.onmouseenter = () => {
-            // Hover Style
-            if (variant === 'primary') {
-                btn.style.transform = 'translateY(-2px) scale(1.02)';
-                btn.style.background = 'rgba(0, 0, 0, 0.95)';
-                btn.style.boxShadow = '0 8px 25px 0 rgba(0, 0, 0, 0.4), inset 0 1px 0 rgba(255, 255, 255, 0.2)';
-            } else {
-                btn.style.background = 'rgba(30, 30, 30, 0.8)';
-                btn.style.transform = 'translateY(-1px)';
-                btn.style.color = '#ffffff';
-                btn.style.boxShadow = '0 4px 12px 0 rgba(0, 0, 0, 0.3), inset 0 1px 0 rgba(255, 255, 255, 0.1)';
-            }
+            // Native-like hover
+            btn.style.background = 'rgba(55, 53, 47, 0.08)'; // Notion hover gray
 
             // Create Tooltip
             if (description) {
@@ -380,94 +358,41 @@
                 tooltip.textContent = description;
                 Object.assign(tooltip.style, {
                     position: 'absolute',
-                    top: '120%', // Below button
+                    top: '110%',
                     left: '50%',
-                    transform: 'translateX(-50%) translateY(0)', // Start slightly down?
-                    background: 'rgba(0, 0, 0, 0.9)',
+                    transform: 'translateX(-50%)',
+                    background: '#191919',
                     color: 'white',
-                    padding: '6px 10px',
-                    borderRadius: '6px',
+                    padding: '4px 8px',
+                    borderRadius: '4px',
                     fontSize: '11px',
                     whiteSpace: 'nowrap',
                     zIndex: '1000',
                     pointerEvents: 'none',
-                    opacity: '0',
-                    transition: 'opacity 0.2s ease, transform 0.2s ease',
-                    boxShadow: '0 4px 12px rgba(0,0,0,0.3)',
-                    border: '1px solid rgba(255,255,255,0.1)'
+                    boxShadow: '0 2px 4px rgba(0,0,0,0.2)'
                 });
                 btn.appendChild(tooltip);
-
-                // Animate in
-                requestAnimationFrame(() => {
-                    tooltip.style.opacity = '1';
-                    tooltip.style.transform = 'translateX(-50%) translateY(4px)';
-                });
             }
         };
 
         btn.onmouseleave = () => {
-            // Restore Style
-            if (variant === 'primary') {
-                btn.style.transform = 'translateY(0) scale(1)';
-                btn.style.background = 'rgba(20, 20, 20, 0.85)';
-                btn.style.boxShadow = '0 4px 16px 0 rgba(0, 0, 0, 0.3), inset 0 1px 0 rgba(255, 255, 255, 0.1)';
-            } else {
-                btn.style.background = 'rgba(40, 40, 40, 0.7)';
-                btn.style.transform = 'translateY(0)';
-                btn.style.color = '#e0e0e0';
-                btn.style.boxShadow = '0 2px 8px 0 rgba(0, 0, 0, 0.2), inset 0 1px 0 rgba(255, 255, 255, 0.05)';
-            }
-
-            // Remove Tooltip
+            btn.style.background = 'transparent';
             if (tooltip) {
-                tooltip.style.opacity = '0';
-                setTimeout(() => {
-                    if (tooltip && tooltip.parentNode) tooltip.remove();
-                    tooltip = null;
-                }, 200);
+                tooltip.remove();
+                tooltip = null;
             }
         };
 
-        // Active state
         btn.onmousedown = () => {
-            btn.style.transform = 'scale(0.96)';
+            btn.style.background = 'rgba(55, 53, 47, 0.16)'; // Notion active gray
         };
 
         btn.onmouseup = () => {
-            btn.style.transform = variant === 'primary' ? 'translateY(-2px) scale(1.02)' : 'translateY(-1px)';
+            btn.style.background = 'rgba(55, 53, 47, 0.08)';
         };
 
         btn.onclick = (e) => {
             e.stopPropagation();
-
-            // Ripple effect
-            const ripple = document.createElement('span');
-            const rect = btn.getBoundingClientRect();
-            const size = Math.max(rect.width, rect.height);
-            const x = e.clientX - rect.left - size / 2;
-            const y = e.clientY - rect.top - size / 2;
-
-            Object.assign(ripple.style, {
-                position: 'absolute',
-                width: size + 'px',
-                height: size + 'px',
-                borderRadius: '50%',
-                background: 'rgba(255, 255, 255, 0.2)',
-                left: x + 'px',
-                top: y + 'px',
-                transform: 'scale(0)',
-                animation: 'ripple 0.6s ease-out',
-                pointerEvents: 'none',
-                overflow: 'hidden' // Important for ripple to be contained if we set btn overflow to visible
-            });
-
-            // Note: Since we set overflow: visible on btn for tooltips, we need to handle ripple overflow differently.
-            // Actually, ripple is usually fine bursting out, or we wrap inner content. 
-            // Simplified: let it burst or clip it with a wrapper. For now, let's just append.
-            btn.appendChild(ripple);
-            setTimeout(() => ripple.remove(), 600);
-
             onClick();
         };
 
@@ -602,33 +527,39 @@ ${Object.entries(stats.byStyle || {}).map(([style, count]) => `  ${style}: ${cou
 
     console.log('Crixen: Fully initialized with glassmorphism UI');
 
-    // ✅ NEW: Glassmorphism Input Modal
+    // ✅ NEW: Glassmorphism Input Modal (Dark Theme Optimized)
     function createInputModal(title, questions) {
         return new Promise((resolve) => {
-            // Overlay
+            // Overlay with strong blur
             const overlay = document.createElement('div');
             Object.assign(overlay.style, {
                 position: 'fixed', top: '0', left: '0', width: '100%', height: '100%',
-                background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(5px)',
+                background: 'rgba(0,0,0,0.7)', backdropFilter: 'blur(8px)',
                 zIndex: '99999', display: 'flex', alignItems: 'center', justifyContent: 'center',
                 opacity: '0', transition: 'opacity 0.3s ease'
             });
 
-            // Modal Container
+            // Modal Container - Dark Glass
             const modal = document.createElement('div');
             Object.assign(modal.style, {
-                width: '450px', maxHeight: '85vh', overflowY: 'auto',
-                background: 'rgba(255, 255, 255, 0.95)',
-                borderRadius: '16px', padding: '24px',
-                boxShadow: '0 20px 50px rgba(0,0,0,0.3)',
-                transform: 'translateY(20px)', transition: 'transform 0.3s ease',
-                fontFamily: '-apple-system, system-ui, sans-serif'
+                width: '480px', maxHeight: '85vh', overflowY: 'auto',
+                background: 'rgba(20, 20, 20, 0.95)', // Deep dark
+                border: '1px solid rgba(255, 255, 255, 0.1)',
+                borderRadius: '16px', padding: '32px',
+                boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.5)',
+                transform: 'translateY(20px)', transition: 'transform 0.3s cubic-bezier(0.16, 1, 0.3, 1)',
+                fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
+                color: '#ffffff'
             });
 
             // Header
             const header = document.createElement('h2');
             header.textContent = title;
-            Object.assign(header.style, { marginTop: '0', marginBottom: '20px', fontSize: '20px', fontWeight: '700', color: '#111' });
+            Object.assign(header.style, {
+                marginTop: '0', marginBottom: '24px',
+                fontSize: '22px', fontWeight: '700',
+                color: '#ffffff', letterSpacing: '-0.5px'
+            });
             modal.appendChild(header);
 
             // Form Fields
@@ -636,33 +567,59 @@ ${Object.entries(stats.byStyle || {}).map(([style, count]) => `  ${style}: ${cou
 
             questions.forEach(q => {
                 const wrapper = document.createElement('div');
-                Object.assign(wrapper.style, { marginBottom: '16px' });
+                Object.assign(wrapper.style, { marginBottom: '20px' });
 
                 const label = document.createElement('label');
                 label.textContent = q.label + (q.required ? ' *' : '');
-                Object.assign(label.style, { display: 'block', marginBottom: '6px', fontSize: '13px', fontWeight: '600', color: '#444' });
+                Object.assign(label.style, {
+                    display: 'block', marginBottom: '8px',
+                    fontSize: '13px', fontWeight: '600',
+                    color: 'rgba(255, 255, 255, 0.7)',
+                    textTransform: 'uppercase', letterSpacing: '0.5px'
+                });
                 wrapper.appendChild(label);
+
+                // Common Input Styles for Dark Theme
+                const inputStyles = {
+                    width: '100%', padding: '12px 14px', borderRadius: '8px',
+                    border: '1px solid rgba(255, 255, 255, 0.15)',
+                    fontSize: '15px', color: '#ffffff',
+                    background: 'rgba(255, 255, 255, 0.05)',
+                    transition: 'border-color 0.2s, background 0.2s',
+                    outline: 'none', fontFamily: 'inherit'
+                };
+
+                const focusStyle = (el) => {
+                    el.onfocus = () => {
+                        el.style.borderColor = 'rgba(255, 255, 255, 0.4)';
+                        el.style.background = 'rgba(255, 255, 255, 0.1)';
+                    };
+                    el.onblur = () => {
+                        el.style.borderColor = 'rgba(255, 255, 255, 0.15)';
+                        el.style.background = 'rgba(255, 255, 255, 0.05)';
+                    };
+                };
 
                 let input;
                 if (q.type === 'textarea') {
                     input = document.createElement('textarea');
-                    input.rows = 3;
-                    Object.assign(input.style, {
-                        width: '100%', padding: '10px', borderRadius: '8px',
-                        border: '1px solid #ddd', fontSize: '14px', resize: 'vertical'
-                    });
+                    input.rows = 4;
+                    Object.assign(input.style, { ...inputStyles, resize: 'vertical', lineHeight: '1.5' });
+                    focusStyle(input);
                 } else if (q.type === 'select') {
                     input = document.createElement('select');
-                    Object.assign(input.style, {
-                        width: '100%', padding: '10px', borderRadius: '8px',
-                        border: '1px solid #ddd', fontSize: '14px', background: 'white'
-                    });
+                    Object.assign(input.style, { ...inputStyles, appearance: 'none', cursor: 'pointer' });
+                    // Custom arrow styling or wrapper often needed, but keeping simple for native inject
+                    input.innerHTML = `<option value="" disabled selected style="background:#222">Select option...</option>`;
                     q.options.forEach(opt => {
                         const option = document.createElement('option');
                         option.value = opt;
                         option.textContent = opt;
+                        option.style.background = '#222'; // Dark dropdown
+                        option.style.color = '#fff';
                         input.appendChild(option);
                     });
+                    focusStyle(input);
                 } else if (q.type === 'multiselect') {
                     input = document.createElement('div');
                     Object.assign(input.style, { display: 'flex', flexWrap: 'wrap', gap: '8px' });
@@ -670,31 +627,30 @@ ${Object.entries(stats.byStyle || {}).map(([style, count]) => `  ${style}: ${cou
                         const chip = document.createElement('div');
                         chip.textContent = opt;
                         Object.assign(chip.style, {
-                            padding: '6px 12px', borderRadius: '20px',
-                            border: '1px solid #ddd', cursor: 'pointer', fontSize: '13px',
-                            background: '#f5f5f5', transition: 'all 0.2s', userSelect: 'none'
+                            padding: '8px 14px', borderRadius: '20px',
+                            border: '1px solid rgba(255, 255, 255, 0.15)',
+                            cursor: 'pointer', fontSize: '13px', fontWeight: '500',
+                            background: 'rgba(255, 255, 255, 0.05)', color: 'rgba(255, 255, 255, 0.8)',
+                            transition: 'all 0.2s', userSelect: 'none'
                         });
                         chip.dataset.selected = 'false';
                         chip.onclick = () => {
                             const isSelected = chip.dataset.selected === 'true';
                             chip.dataset.selected = isSelected ? 'false' : 'true';
-                            chip.style.background = isSelected ? '#f5f5f5' : '#333';
-                            chip.style.color = isSelected ? '#333' : '#fff';
-                            chip.style.borderColor = isSelected ? '#ddd' : '#333';
+                            chip.style.background = isSelected ? '#ffffff' : 'rgba(255, 255, 255, 0.05)';
+                            chip.style.color = isSelected ? '#000000' : 'rgba(255, 255, 255, 0.8)';
+                            chip.style.borderColor = isSelected ? '#ffffff' : 'rgba(255, 255, 255, 0.15)';
                         };
                         input.appendChild(chip);
                     });
-                    // Helper to get values
                     input.getValue = () => Array.from(input.children)
                         .filter(c => c.dataset.selected === 'true')
                         .map(c => c.textContent).join(', ');
                 } else {
                     input = document.createElement('input');
                     input.type = 'text';
-                    Object.assign(input.style, {
-                        width: '100%', padding: '10px', borderRadius: '8px',
-                        border: '1px solid #ddd', fontSize: '14px'
-                    });
+                    Object.assign(input.style, inputStyles);
+                    focusStyle(input);
                 }
 
                 if (q.type !== 'multiselect') {
@@ -708,30 +664,43 @@ ${Object.entries(stats.byStyle || {}).map(([style, count]) => `  ${style}: ${cou
 
             // Footer / Actions
             const actions = document.createElement('div');
-            Object.assign(actions.style, { display: 'flex', justifyContent: 'flex-end', gap: '10px', marginTop: '24px' });
+            Object.assign(actions.style, { display: 'flex', justifyContent: 'flex-end', gap: '12px', marginTop: '32px' });
 
             const cancelBtn = document.createElement('button');
             cancelBtn.textContent = 'Cancel';
             Object.assign(cancelBtn.style, {
-                padding: '8px 16px', borderRadius: '8px', border: 'none',
-                background: '#f0f0f0', color: '#333', cursor: 'pointer', fontWeight: '600'
+                padding: '10px 20px', borderRadius: '8px', border: 'none',
+                background: 'rgba(255, 255, 255, 0.1)', color: '#fff',
+                cursor: 'pointer', fontWeight: '600', fontSize: '14px',
+                transition: 'background 0.2s'
             });
+            cancelBtn.onmouseenter = () => cancelBtn.style.background = 'rgba(255, 255, 255, 0.2)';
+            cancelBtn.onmouseleave = () => cancelBtn.style.background = 'rgba(255, 255, 255, 0.1)';
             cancelBtn.onclick = () => close(null);
 
             const submitBtn = document.createElement('button');
             submitBtn.textContent = 'Generate ✨';
             Object.assign(submitBtn.style, {
-                padding: '8px 20px', borderRadius: '8px', border: 'none',
-                background: '#000', color: '#fff', cursor: 'pointer', fontWeight: '600',
-                boxShadow: '0 4px 12px rgba(0,0,0,0.2)'
+                padding: '10px 24px', borderRadius: '8px', border: 'none',
+                background: '#ffffff', color: '#000000',
+                cursor: 'pointer', fontWeight: '700', fontSize: '14px',
+                boxShadow: '0 4px 15px rgba(255, 255, 255, 0.2)',
+                transition: 'transform 0.2s, box-shadow 0.2s'
             });
+            submitBtn.onmouseenter = () => {
+                submitBtn.style.transform = 'translateY(-1px)';
+                submitBtn.style.boxShadow = '0 6px 20px rgba(255, 255, 255, 0.3)';
+            };
+            submitBtn.onmouseleave = () => {
+                submitBtn.style.transform = 'translateY(0)';
+                submitBtn.style.boxShadow = '0 4px 15px rgba(255, 255, 255, 0.2)';
+            };
             submitBtn.onclick = () => {
-                // Collect and Validate
                 const answers = {};
                 let missing = [];
                 questions.forEach(q => {
                     const val = fieldValues[q.id].getValue();
-                    if (q.required && !val) missing.push(q.label);
+                    if (q.required && !val) missing.push(q.label.replace(' *', ''));
                     answers[q.id] = val;
                 });
 
