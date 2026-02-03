@@ -24,12 +24,12 @@
 
     // Icons
     const ICONS = {
-        strategy: `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="2"/></svg>`,
-        calendar: `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>`,
-        audit: `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>`,
-        influencer: `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>`,
-        capture: `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>`,
-        report: `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>`
+        strategy: `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="2"/></svg>`,
+        calendar: `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>`,
+        audit: `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>`,
+        influencer: `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>`,
+        capture: `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>`,
+        report: `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>`
     };
 
     function addCustomButtons() {
@@ -82,7 +82,8 @@
                     { id: 'brandVoice', label: 'Brand Voice/Tone', type: 'text' },
                     { id: 'usp', label: 'Unique Selling Point', type: 'textarea' }
                 ];
-                const answers = await createInputModal('🎯 Brand Strategy Builder', questions);
+                // Pass Icon here
+                const answers = await createInputModal('Brand Strategy Builder', questions, ICONS.strategy);
                 if (answers) await generateAndInsertContent('generateStrategyDoc', 'Strategy', null, true, answers);
             }, ICONS.strategy, 'primary', 'Generate a full brand strategy document'));
 
@@ -95,7 +96,7 @@
                     { id: 'industry', label: 'Industry', type: 'text', required: true },
                     { id: 'frequency', label: 'Posts per Week', type: 'select', options: ['3', '5', '7', '10+'], required: true }
                 ];
-                const answers = await createInputModal('📅 Content Calendar Setup', questions);
+                const answers = await createInputModal('Content Calendar Setup', questions, ICONS.calendar);
                 if (answers) await generateAndInsertContent('generateToolkit', 'Content Calendar', 'calendar', true, answers);
             }, ICONS.calendar, 'secondary', 'Create a social media content calendar'));
 
@@ -108,7 +109,7 @@
                     { id: 'analyze_what', label: 'What to analyze?', type: 'multiselect', options: ['Content Strategy', 'Engagement', 'Visuals', 'Hashtags', 'Competitors'], required: true },
                     { id: 'strength', label: 'Your Current Strength', type: 'text' }
                 ];
-                const answers = await createInputModal('🔍 Competitor Audit Setup', questions);
+                const answers = await createInputModal('Competitor Audit Setup', questions, ICONS.audit);
                 if (answers) await generateAndInsertContent('generateToolkit', 'Competitor Audit', 'audit', true, answers);
             }, ICONS.audit, 'secondary', 'Generate a competitor analysis report'));
 
@@ -122,7 +123,7 @@
                     { id: 'deliverables', label: 'Expected Deliverables', type: 'textarea' },
                     { id: 'timeline', label: 'Campaign Timeline', type: 'text' }
                 ];
-                const answers = await createInputModal('🤝 Influencer Campaign Setup', questions);
+                const answers = await createInputModal('Influencer Campaign Setup', questions, ICONS.influencer);
                 if (answers) await generateAndInsertContent('generateToolkit', 'Influencer Tracker', 'influencer', true, answers);
             }, ICONS.influencer, 'secondary', 'Create an influencer tracking database'));
 
@@ -319,7 +320,7 @@
         btn.role = 'button';
         btn.className = 'crixen-notion-btn';
 
-        // Use SVG icon + Text
+        // Use SVG icon + Text (Size adjusted: 16px icon)
         btn.innerHTML = `<span style="display:flex; align-items:center; margin-right: 6px; width:16px; height:16px;">${iconSvg}</span><span style="font-size:14px;">${text}</span>`;
 
         // Minimal base styles
@@ -527,8 +528,8 @@ ${Object.entries(stats.byStyle || {}).map(([style, count]) => `  ${style}: ${cou
 
     console.log('Crixen: Fully initialized with glassmorphism UI');
 
-    // ✅ NEW: Glassmorphism Input Modal (Dark Theme Optimized)
-    function createInputModal(title, questions) {
+    // ✅ NEW: Glassmorphism Input Modal (Dark Theme Optimized + Scrollbar hidden)
+    function createInputModal(title, questions, iconSvg) {
         return new Promise((resolve) => {
             // Overlay with strong blur
             const overlay = document.createElement('div');
@@ -541,6 +542,7 @@ ${Object.entries(stats.byStyle || {}).map(([style, count]) => `  ${style}: ${cou
 
             // Modal Container - Dark Glass
             const modal = document.createElement('div');
+            modal.className = 'crixen-modal-content'; // Class for style injection if needed
             Object.assign(modal.style, {
                 width: '480px', maxHeight: '85vh', overflowY: 'auto',
                 background: 'rgba(20, 20, 20, 0.95)', // Deep dark
@@ -549,18 +551,52 @@ ${Object.entries(stats.byStyle || {}).map(([style, count]) => `  ${style}: ${cou
                 boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.5)',
                 transform: 'translateY(20px)', transition: 'transform 0.3s cubic-bezier(0.16, 1, 0.3, 1)',
                 fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
-                color: '#ffffff'
+                color: '#ffffff',
+                scrollbarWidth: 'none', // Firefox
+                msOverflowStyle: 'none' // IE 10+
             });
 
-            // Header
+            // Inject Style for Webkit Scrollbar Hide
+            if (!document.getElementById('crixen-scrollbar-style')) {
+                const style = document.createElement('style');
+                style.id = 'crixen-scrollbar-style';
+                style.textContent = `
+                    .crixen-modal-content::-webkit-scrollbar { 
+                        display: none; 
+                    }
+                `;
+                document.head.appendChild(style);
+            }
+
+            // Header Container
+            const headerContainer = document.createElement('div');
+            Object.assign(headerContainer.style, {
+                display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '24px'
+            });
+
+            // Icon (if provided)
+            if (iconSvg) {
+                const iconContainer = document.createElement('div');
+                iconContainer.innerHTML = iconSvg;
+                Object.assign(iconContainer.style, {
+                    width: '32px', height: '32px',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    background: 'rgba(255, 255, 255, 0.1)',
+                    borderRadius: '8px', color: '#fff'
+                });
+                headerContainer.appendChild(iconContainer);
+            }
+
+            // Header Text
             const header = document.createElement('h2');
             header.textContent = title;
             Object.assign(header.style, {
-                marginTop: '0', marginBottom: '24px',
-                fontSize: '22px', fontWeight: '700',
+                margin: '0', fontSize: '20px', fontWeight: '700',
                 color: '#ffffff', letterSpacing: '-0.5px'
             });
-            modal.appendChild(header);
+            headerContainer.appendChild(header);
+
+            modal.appendChild(headerContainer);
 
             // Form Fields
             const fieldValues = {};
