@@ -121,7 +121,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
                 // --- NOTION GENERATORS ---
 
                 case 'generateStrategyDoc':
-                    const strategyDoc = await generateStrategyDoc();
+                    const strategyDoc = await generateStrategyDoc(request.additionalContext);
                     sendResponse({ success: true, doc: strategyDoc });
                     break;
 
@@ -131,7 +131,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
                     break;
 
                 case 'generateToolkit':
-                    const toolkitDoc = await generateToolkitDoc(request.toolType);
+                    const toolkitDoc = await generateToolkitDoc(request.toolType, request.additionalContext);
                     sendResponse({ success: true, doc: toolkitDoc });
                     break;
 
@@ -335,19 +335,39 @@ async function callNearAI(prompt, maxTokens = null) {
 
 // --- NOTION GENERATORS ---
 
-async function generateStrategyDoc() {
+async function generateStrategyDoc(inputs = {}) {
+    // Robustly handle string or object input for backward compatibility
+    let context = '';
+    if (typeof inputs === 'string') {
+        context = inputs;
+    } else {
+        context = `
+    - Brand Name: ${inputs.brandName || 'Not specified'}
+    - Industry: ${inputs.industry || 'Not specified'}
+    - Target Audience: ${inputs.targetAudience || 'Not specified'}
+    - Main Goals: ${inputs.goals || 'Not specified'}
+    - Platforms: ${inputs.platforms || 'Not specified'}
+    - Brand Voice: ${inputs.brandVoice || 'Professional'}
+    - Unique Value: ${inputs.uniqueValue || 'Not specified'}
+        `.trim();
+    }
+
     return callNearAI(
         `You are a world-class Social Media Strategist.
 Create an extremely detailed, high-end Brand Social Media Strategy document in Markdown.
+
+USER CONTEXT:
+${context}
+
 Include:
 1. Executive Summary
 2. Brand Pillars (3 themes)
 3. Tone of Voice
-4. Target Audience
+4. Target Audience Persona
 5. Content Mix Table
 6. Growth Tactics
 Output ONLY markdown.`,
-        2000 // Max tokens
+        2500 // Max tokens
     );
 }
 
@@ -365,25 +385,79 @@ Output ONLY markdown.`,
     );
 }
 
-async function generateToolkitDoc(type) {
+async function generateToolkitDoc(type, inputs = {}) {
+    // Handle Context from inputs object
+    let context = '';
+    let emailGoal = 'General Outreach';
+
+    if (typeof inputs === 'string') {
+        context = inputs;
+    } else if (type === 'calendar') {
+        context = `
+    - Brand: ${inputs.brandName}
+    - Industry: ${inputs.industry}
+    - Content Themes: ${inputs.themes}
+    - Posting Frequency: ${inputs.frequency}
+    - Content Types: ${inputs.contentTypes}
+    - Current Campaign: ${inputs.campaign || 'General'}
+        `.trim();
+    } else if (type === 'audit') {
+        context = `
+    - Brand: ${inputs.brandName}
+    - Industry: ${inputs.industry}
+    - Competitors: ${inputs.competitors}
+    - Platforms to Analyze: ${inputs.platforms}
+    - Focus Metrics: ${inputs.metrics}
+    - Current Strength: ${inputs.strength || 'Unknown'}
+        `.trim();
+    } else if (type === 'influencer') {
+        context = `
+    - Industry: ${inputs.industry}
+    - Campaign Goal: ${inputs.goal}
+    - Budget: ${inputs.budget}
+    - Influencer Tier: ${inputs.tier}
+    - Platforms: ${inputs.platforms}
+    - Deliverables: ${inputs.deliverables || 'Standard'}
+    - Timeline: ${inputs.timeline || 'ASAP'}
+        `.trim();
+        emailGoal = inputs.goal;
+    }
+
     const prompts = {
         calendar: `You are an expert Social Media Manager.
-Create a 4-Week Social Media Content Calendar Template in Markdown.
+Create a 4-Week Social Media Content Calendar Template in Markdown based on the user's specific needs.
+
+USER CONTEXT:
+${context}
+
 Table columns: [Week], [Theme], [Post Type], [Caption Idea], [Status].
-Fill with evergreen examples. Output ONLY markdown.`,
+Ensure the content matches their industry (${inputs.industry || 'General'}) and frequency (${inputs.frequency || 'Daily'}).
+Output ONLY markdown.`,
 
         audit: `You are an expert Social Media Manager.
-Create a Competitor Audit Template in Markdown.
-Sections: Competitor ID Table, SWOT Analysis, Content Gap Analysis.
+Create a Competitor Audit Report in Markdown.
+
+USER CONTEXT:
+${context}
+
+Sections: 
+1. Audit of the specific competitors mentioned.
+2. SWOT Analysis for ${inputs.brandName || 'the brand'}.
+3. Content Gap Analysis vs competitors.
+4. Action Plan to beat the metric: ${inputs.metrics || 'Engagement'}.
 Output ONLY markdown.`,
 
         influencer: `You are an expert Social Media Manager.
-Create an Influencer Outreach Tracker Template in Markdown.
+Create an Influencer Outreach Tracker & Plan in Markdown.
+
+USER CONTEXT:
+${context}
+
 Table columns: [Name], [Niche], [Platform], [Follower Count], [Status], [Notes].
-Include Outreach Email Templates.
+Include 3 tailored Outreach Email Templates based on their campaign goal: ${emailGoal}.
 Output ONLY markdown.`
     };
 
     if (!prompts[type]) throw new Error('Invalid Tool');
-    return callNearAI(prompts[type], 1500);
+    return callNearAI(prompts[type], 2500);
 }
