@@ -16,24 +16,6 @@
           <h1>Crixen</h1>
         </div>
         <div class="user-controls" id="userControls" style="display: none;">
-          <div class="project-selector-group">
-            <select id="projectSelect" class="project-dropdown">
-              <option value="" disabled selected>Select Project...</option>
-            </select>
-            <input type="text" id="projectRenameInput" class="project-rename-input" style="display: none;">
-            <button id="addProjectBtn" class="icon-btn" title="Add Project" style="display: none;">
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <line x1="12" y1="5" x2="12" y2="19"></line>
-                <line x1="5" y1="12" x2="19" y2="12"></line>
-              </svg>
-            </button>
-            <button id="editProjectBtn" class="icon-btn" title="Rename Project">
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <path d="M12 20h9"></path>
-                <path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"></path>
-              </svg>
-            </button>
-          </div>
           <button id="logoutBtn" class="icon-btn" title="Logout">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
               <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"></path>
@@ -61,6 +43,57 @@
     </div>
 
     <main class="popup-content" id="mainContent" style="display: none;">
+
+      <!-- Project Section (Prominent) -->
+      <section class="settings-section project-section glass-card">
+        <div class="glass-header">
+          <h2>
+            <span class="icon">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path>
+              </svg>
+            </span>
+            Active Project
+          </h2>
+          <span class="project-count-badge" id="projectCountBadge">1/1</span>
+        </div>
+        <div class="glass-body">
+          <div class="project-selector-row">
+            <select id="projectSelect" class="project-dropdown">
+              <option value="" disabled selected>Select Project...</option>
+            </select>
+            <input type="text" id="projectRenameInput" class="project-rename-input" style="display: none;">
+            <button id="editProjectBtn" class="icon-btn" title="Rename Project">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M12 20h9"></path>
+                <path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"></path>
+              </svg>
+            </button>
+            <button id="addProjectBtn" class="icon-btn add-btn" title="Add Project" style="display: none;">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <line x1="12" y1="5" x2="12" y2="19"></line>
+                <line x1="5" y1="12" x2="19" y2="12"></line>
+              </svg>
+            </button>
+          </div>
+
+          <!-- Brand Voice Display (Read-Only) -->
+          <div class="brand-voice-preview">
+            <div class="bv-label">
+              <span>Brand Voice</span>
+              <a href="#" id="editVoiceOnDashboard" class="edit-on-dashboard-link">Edit on Dashboard</a>
+            </div>
+            <div id="voiceDisplay" class="voice-display-box">No brand voice defined.</div>
+          </div>
+
+          <!-- Strategies Count -->
+          <div class="strategies-info">
+            <span class="strategies-label">Strategies:</span>
+            <span id="strategiesCount" class="strategies-count">0</span>
+          </div>
+        </div>
+      </section>
+
       <!-- Tabs -->
       <div class="tabs">
         <button class="tab-btn active" data-tab="instagram">Instagram</button>
@@ -169,32 +202,14 @@
       <!-- Shared Settings -->
       <hr class="divider">
 
-      <!-- Model Selection -->
+      <!-- Model Selection (Dropdown) -->
       <section class="settings-section">
         <h2>AI Model</h2>
-        <div class="provider-cards">
-          <label class="provider-card" data-provider="deepseek-ai/DeepSeek-V3.1">
-            <input type="radio" name="provider" value="deepseek-ai/DeepSeek-V3.1">
-            <div class="provider-info">
-              <span class="provider-name">DeepSeek V3.1</span>
-            </div>
-            <span class="provider-check">Selected</span>
-          </label>
-          <label class="provider-card" data-provider="openai/gpt-5.2">
-            <input type="radio" name="provider" value="openai/gpt-5.2">
-            <div class="provider-info">
-              <span class="provider-name">OpenAI GPT-5.2</span>
-            </div>
-            <span class="provider-check">Selected</span>
-          </label>
-          <label class="provider-card" data-provider="anthropic/claude-sonnet-4-5">
-            <input type="radio" name="provider" value="anthropic/claude-sonnet-4-5">
-            <div class="provider-info">
-              <span class="provider-name">Claude Sonnet 4.5</span>
-            </div>
-            <span class="provider-check">Selected</span>
-          </label>
-        </div>
+        <select id="modelSelect" class="model-dropdown">
+          <option value="deepseek-ai/DeepSeek-V3.1">DeepSeek V3.1</option>
+          <option value="openai/gpt-5.2">OpenAI GPT-5.2</option>
+          <option value="anthropic/claude-sonnet-4-5">Claude Sonnet 4.5</option>
+        </select>
       </section>
 
       <!-- Default Style -->
@@ -211,35 +226,14 @@
         </select>
       </section>
 
-      <!-- Brand Voice -->
-      <section class="settings-section">
-        <div class="section-header-row">
-          <h2>Brand Voice</h2>
-          <button id="editVoiceBtn" class="edit-icon-btn" style="display: none;">
-            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path>
-              <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path>
-            </svg>
-            EDIT
-          </button>
-        </div>
-        <p class="field-description">Define the specific tone, vocabulary, and personality for your agent.</p>
-
-        <!-- Read Only Display -->
-        <div id="voiceDisplay" class="voice-display-box" style="display: none;"></div>
-
-        <!-- Input Area -->
-        <div id="voiceInputContainer">
-          <textarea id="instructions" placeholder="E.g. Use short sentences. Be optimistic. No emojis."></textarea>
-          <p class="api-help">Applies to all styles</p>
-        </div>
-      </section>
-
       <!-- Custom Prompt -->
       <section class="settings-section custom-prompt-section" id="customPromptSection" style="display: none;">
         <h2>Custom Prompt</h2>
         <textarea id="customPrompt" placeholder="Describe your persona..."></textarea>
       </section>
+
+      <!-- Hidden Brand Voice (for save function) -->
+      <input type="hidden" id="instructions" value="">
 
       <!-- Buttons -->
       <div class="button-group">

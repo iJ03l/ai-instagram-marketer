@@ -619,11 +619,151 @@ textarea:focus {
     background: #111;
     border: 1px solid var(--glass-border);
     border-radius: 6px;
-    padding: 12px;
+    padding: 10px 12px;
+    font-size: 12px;
+    color: var(--text-muted);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    cursor: default;
+}
+
+/* PROJECT SECTION */
+.project-section {
+    margin-bottom: 16px;
+}
+
+.project-section .glass-header h2 {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin: 0;
+    text-transform: none;
     font-size: 13px;
     color: var(--text-main);
-    line-height: 1.5;
-    white-space: pre-wrap;
-    /* Removed min-height to allow it to feel 'closed' or compact if content is short */
-    cursor: default;
+}
+
+.project-count-badge {
+    font-size: 10px;
+    font-weight: 600;
+    padding: 2px 8px;
+    background: rgba(255, 255, 255, 0.1);
+    border-radius: 12px;
+    color: var(--text-muted);
+}
+
+.project-selector-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 16px;
+}
+
+.project-selector-row .project-dropdown {
+    flex: 1;
+    width: auto;
+}
+
+.icon-btn.add-btn {
+    color: #10b981;
+}
+
+.icon-btn.add-btn:hover {
+    background: rgba(16, 185, 129, 0.1);
+}
+
+/* BRAND VOICE PREVIEW */
+.brand-voice-preview {
+    margin-bottom: 12px;
+}
+
+.bv-label {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 8px;
+}
+
+.bv-label span {
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    color: var(--text-muted);
+    font-weight: 600;
+}
+
+.edit-on-dashboard-link {
+    font-size: 10px;
+    color: #60a5fa;
+    text-decoration: none;
+}
+
+.edit-on-dashboard-link:hover {
+    text-decoration: underline;
+}
+
+/* STRATEGIES INFO */
+.strategies-info {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 12px;
+    background: rgba(255, 255, 255, 0.03);
+    border-radius: 6px;
+}
+
+.strategies-label {
+    font-size: 11px;
+    color: var(--text-muted);
+}
+
+.strategies-count {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--text-main);
+}
+
+/* MODEL DROPDOWN */
+.model-dropdown {
+    background: #111;
+    border: 1px solid var(--glass-border);
+    color: #fff;
+    padding: 12px;
+    border-radius: 6px;
+    font-size: 13px;
+    width: 100%;
+    cursor: pointer;
+}
+
+.model-dropdown:focus {
+    border-color: var(--text-main);
+    outline: none;
+}
+
+/* SAVE BUTTON STATES */
+.btn-primary.saving {
+    opacity: 0.7;
+    cursor: wait;
+}
+
+.btn-primary.saved {
+    background: #10b981;
+    color: #fff;
+}
+
+/* STATUS MESSAGE ANIMATION */
+.status-message.visible {
+    opacity: 0;
+    transform: translateY(10px);
+    transition: all 0.3s ease;
+}
+
+.status-message.visible.show {
+    opacity: 1;
+    transform: translateY(0);
+}
+
+.status-message.success {
+    color: #10b981;
+    font-weight: 600;
 }

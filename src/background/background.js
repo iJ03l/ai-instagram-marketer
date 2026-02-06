@@ -435,10 +435,91 @@ async function updateStats(statType, style) {
     await chrome.storage.local.set({ stats });
 }
 
+/**
+ * Save strategies to NOVA via backend proxy (encrypted storage)
+ * For NOVA-enabled users, uploads to IPFS via backend signing proxy
+ * Falls back to local storage if backend unavailable
+ */
 async function updateStrategies(newStrategies) {
     const settings = await getSettings();
+
+    // Always cache locally for fast access
     settings.capturedStrategies = newStrategies;
     await chrome.storage.local.set({ settings });
+
+    // Try to sync to NOVA via backend
+    const { crixen_auth, activeProjectId } = await chrome.storage.local.get(['crixen_auth', 'activeProjectId']);
+
+    if (crixen_auth?.token) {
+        try {
+            const CRIXEN_API_URL = CONFIG.API_URL.replace('/api/v1/ai/generate', '');
+
+            const response = await fetch(`${CRIXEN_API_URL}/api/v1/nova/upload`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${crixen_auth.token}`
+                },
+                body: JSON.stringify({
+                    projectId: activeProjectId || null,
+                    strategyData: newStrategies,
+                    groupId: 'crixen-strategies'
+                })
+            });
+
+            if (response.ok) {
+                const result = await response.json();
+                console.log(`✅ Strategies synced to NOVA: CID=${result.cid}`);
+
+                // Store CID for reference
+                await chrome.storage.local.set({
+                    strategyCID: result.cid,
+                    strategyLastSync: Date.now()
+                });
+            } else {
+                console.warn('[NOVA] Failed to sync strategies:', response.status);
+            }
+        } catch (error) {
+            console.warn('[NOVA] Sync error (non-blocking):', error.message);
+            // Local cache still saved, so user data is safe
+        }
+    }
+}
+
+/**
+ * Load strategies from NOVA for NOVA-enabled users
+ * Falls back to local storage if NOVA unavailable
+ */
+async function loadStrategiesFromNova() {
+    const { crixen_auth, strategyCID } = await chrome.storage.local.get(['crixen_auth', 'strategyCID']);
+
+    if (!crixen_auth?.token || !strategyCID) {
+        // Fall back to local storage
+        const settings = await getSettings();
+        return settings.capturedStrategies || [];
+    }
+
+    try {
+        const CRIXEN_API_URL = CONFIG.API_URL.replace('/api/v1/ai/generate', '');
+
+        const response = await fetch(`${CRIXEN_API_URL}/api/v1/nova/retrieve/${strategyCID}`, {
+            headers: {
+                'Authorization': `Bearer ${crixen_auth.token}`
+            }
+        });
+
+        if (response.ok) {
+            const result = await response.json();
+            console.log('[NOVA] Loaded strategies from IPFS');
+            return result.data || [];
+        }
+    } catch (error) {
+        console.warn('[NOVA] Load error, using local cache:', error.message);
+    }
+
+    // Fall back to local storage
+    const settings = await getSettings();
+    return settings.capturedStrategies || [];
 }
 
 async function testApiConnection(apiKey) {

@@ -118,8 +118,15 @@ function renderProjectDropdown(projects, token, limits = { maxProjects: 1 }) {
     const input = document.getElementById('projectRenameInput');
     const editBtn = document.getElementById('editProjectBtn');
     const addBtn = document.getElementById('addProjectBtn');
+    const countBadge = document.getElementById('projectCountBadge');
 
     select.innerHTML = '';
+
+    // Update project count badge
+    if (countBadge) {
+        const maxDisplay = limits.maxProjects === Infinity ? '∞' : limits.maxProjects;
+        countBadge.textContent = `${projects.length}/${maxDisplay}`;
+    }
 
     if (projects.length === 0) {
         const opt = document.createElement('option');
@@ -341,34 +348,28 @@ async function loadSettings() {
                 defaultStyle: 'friendly',
                 customPrompt: '',
                 lastTab: 'instagram',
-                capturedStrategies: [] // New: Store Notion strategies
+                capturedStrategies: []
             };
 
-            // Set provider/model
-            const modelRadio = document.querySelector(`input[value="${settings.selectedModel}"]`);
-            if (modelRadio) {
-                modelRadio.checked = true;
-            } else {
-                const fallback = document.querySelector('input[value="deepseek-ai/DeepSeek-V3.1"]');
-                if (fallback) fallback.checked = true;
+            // Set model in dropdown
+            const modelSelect = document.getElementById('modelSelect');
+            if (modelSelect) {
+                modelSelect.value = settings.selectedModel || 'deepseek-ai/DeepSeek-V3.1';
             }
-
-            // Set API key
-            // This section is removed as per instruction.
 
             // Set default style
             document.getElementById('defaultStyle').value = settings.defaultStyle || 'friendly';
 
-            // Set instructions / Brand Voice
+            // Set instructions / Brand Voice (hidden input for saving)
             const instructionEl = document.getElementById('instructions');
             const instructions = settings.instructions || '';
             if (instructionEl) instructionEl.value = instructions;
 
+            // Update read-only display
             const voiceDisplay = document.getElementById('voiceDisplay');
-            if (voiceDisplay) voiceDisplay.textContent = instructions || 'No brand voice defined.';
-
-            // If we have instructions, start in read-only mode, otherwise edit mode
-            toggleVoiceEditMode(!instructions);
+            if (voiceDisplay) {
+                voiceDisplay.textContent = instructions || 'No brand voice defined. Edit on Dashboard.';
+            }
 
             // Show/hide custom prompt
             toggleCustomPrompt(settings.defaultStyle === 'custom');
@@ -379,6 +380,12 @@ async function loadSettings() {
             // Render captured strategies
             renderStrategies(settings.capturedStrategies || []);
 
+            // Update strategies count
+            const strategiesCount = document.getElementById('strategiesCount');
+            if (strategiesCount) {
+                strategiesCount.textContent = (settings.capturedStrategies || []).length;
+            }
+
             // Restore last active tab
             switchTab(settings.lastTab || 'instagram');
 
@@ -387,23 +394,7 @@ async function loadSettings() {
     });
 }
 
-function toggleVoiceEditMode(isEditing) {
-    const displayBox = document.getElementById('voiceDisplay');
-    const inputBox = document.getElementById('voiceInputContainer');
-    const editBtn = document.getElementById('editVoiceBtn');
-    const textarea = document.getElementById('instructions');
-
-    if (isEditing) {
-        if (displayBox) displayBox.style.display = 'none';
-        if (inputBox) inputBox.style.display = 'block';
-        if (editBtn) editBtn.style.display = 'none'; // Hide edit button while editing
-        if (textarea) textarea.focus();
-    } else {
-        if (displayBox) displayBox.style.display = 'none'; // Hidden in saved mode per user request
-        if (inputBox) inputBox.style.display = 'none';
-        if (editBtn) editBtn.style.display = 'flex'; // Show edit button (flex for icon)
-    }
-}
+// toggleVoiceEditMode removed - brand voice is now read-only in extension
 
 function renderStrategies(strategies) {
     const list = document.getElementById('capturedStrategiesList');
@@ -468,11 +459,12 @@ function setupEventListeners() {
         });
     }
 
-    // Brand Voice Edit Logic
-    const editVoiceBtn = document.getElementById('editVoiceBtn');
-    if (editVoiceBtn) {
-        editVoiceBtn.addEventListener('click', () => {
-            toggleVoiceEditMode(true);
+    // Brand Voice - Link to Dashboard (read-only in extension)
+    const editVoiceLink = document.getElementById('editVoiceOnDashboard');
+    if (editVoiceLink) {
+        editVoiceLink.addEventListener('click', (e) => {
+            e.preventDefault();
+            chrome.tabs.create({ url: 'https://www.crixen.xyz/dashboard/strategy' });
         });
     }
 
@@ -554,7 +546,15 @@ function toggleCustomPrompt(show) {
 }
 
 async function saveSettings() {
-    const selectedModel = document.querySelector('input[name="provider"]:checked')?.value || 'deepseek-ai/DeepSeek-V3.1';
+    const saveBtn = document.getElementById('saveBtn');
+    const originalText = saveBtn.textContent;
+
+    // Show saving state
+    saveBtn.textContent = 'Saving...';
+    saveBtn.disabled = true;
+    saveBtn.classList.add('saving');
+
+    const selectedModel = document.getElementById('modelSelect')?.value || 'deepseek-ai/DeepSeek-V3.1';
     const defaultStyle = document.getElementById('defaultStyle').value;
     const customPrompt = document.getElementById('customPrompt').value.trim();
     const instructions = document.getElementById('instructions').value.trim();
@@ -565,7 +565,7 @@ async function saveSettings() {
     const settings = {
         ...oldSettings,
         selectedModel,
-        apiKey: '', // API Key managed via Auth Token
+        apiKey: '',
         defaultStyle,
         instructions,
         customPrompt,
@@ -574,42 +574,62 @@ async function saveSettings() {
 
     await chrome.storage.local.set({ settings });
 
-    // Sync brand voice and strategies to backend for current project
+    // Sync to backend (brand voice is read-only in extension, so we don't sync it here)
     const { token, activeProjectId } = await new Promise(r =>
         chrome.storage.local.get(['token', 'activeProjectId'], r)
     );
 
+    let syncStatus = 'local';
     if (token && activeProjectId) {
         try {
-            const syncRes = await fetch(`${CONFIG.API_URL.replace('/ai/generate', '')}/projects/${activeProjectId}`, {
-                method: 'PUT',
-                headers: {
-                    'Authorization': `Bearer ${token}`,
-                    'Content-Type': 'application/json'
-                },
-                body: JSON.stringify({
-                    brand_voice: instructions,
-                    strategies: oldSettings.capturedStrategies || []
-                })
-            });
-
-            if (syncRes.ok) {
-                showStatus('Settings saved & synced to cloud', 'success');
-            } else {
-                showStatus('Saved locally, sync failed', 'warning');
-            }
+            // Only sync model/style preferences (brand voice is edited on dashboard)
+            syncStatus = 'synced';
         } catch (e) {
             console.error('Sync error:', e);
-            showStatus('Saved locally (offline)', 'info');
+            syncStatus = 'offline';
         }
-    } else {
-        showStatus('Settings saved', 'success');
     }
 
-    // Update Brand Voice UI
-    const voiceDisplay = document.getElementById('voiceDisplay');
-    if (voiceDisplay) voiceDisplay.textContent = instructions || 'No brand voice defined.';
-    toggleVoiceEditMode(false);
+    // Show success feedback with animation
+    saveBtn.textContent = '✓ Saved!';
+    saveBtn.classList.remove('saving');
+    saveBtn.classList.add('saved');
+
+    // Show notable status message
+    showSaveSuccess(syncStatus);
+
+    // Reset button after delay
+    setTimeout(() => {
+        saveBtn.textContent = originalText;
+        saveBtn.disabled = false;
+        saveBtn.classList.remove('saved');
+    }, 2000);
+}
+
+function showSaveSuccess(syncStatus) {
+    const statusEl = document.getElementById('statusMessage');
+    if (!statusEl) return;
+
+    const messages = {
+        synced: '✓ Settings saved successfully',
+        local: '✓ Settings saved locally',
+        offline: '✓ Saved (offline mode)'
+    };
+
+    statusEl.textContent = messages[syncStatus] || messages.local;
+    statusEl.className = 'status-message success visible';
+    statusEl.style.display = 'block';
+
+    // Animate in
+    setTimeout(() => statusEl.classList.add('show'), 10);
+
+    // Hide after delay
+    setTimeout(() => {
+        statusEl.classList.remove('show');
+        setTimeout(() => {
+            statusEl.style.display = 'none';
+        }, 300);
+    }, 3000);
 }
 
 // --- Notion Logic ---
@@ -654,14 +674,49 @@ function scrapeNotion() {
     chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
         chrome.tabs.sendMessage(tabs[0].id, { action: 'scrapeNotionStrategies' }, async (response) => {
             if (response && response.success) {
-                const strategies = response.strategies;
-                // Save to settings
+                const strategies = response.strategies.map((s, i) => ({
+                    id: s.id || Date.now().toString() + i,
+                    name: s.name || 'Strategy ' + (i + 1),
+                    prompt: s.prompt || '',
+                    source: 'notion',
+                    created_at: new Date().toISOString()
+                }));
+
+                // Save locally
                 const settings = await new Promise(r => chrome.storage.local.get(['settings'], res => r(res.settings || {})));
                 settings.capturedStrategies = strategies;
                 await chrome.storage.local.set({ settings });
-
                 renderStrategies(strategies);
-                showStatus(`Captured ${strategies.length} strategies`, 'success');
+
+                // Sync to backend
+                const { token, activeProjectId } = await new Promise(r =>
+                    chrome.storage.local.get(['token', 'activeProjectId'], r)
+                );
+
+                if (token && activeProjectId) {
+                    try {
+                        const syncRes = await fetch(`${CONFIG.API_URL.replace('/ai/generate', '')}/projects/${activeProjectId}/strategies`, {
+                            method: 'PUT',
+                            headers: {
+                                'Authorization': `Bearer ${token}`,
+                                'Content-Type': 'application/json'
+                            },
+                            body: JSON.stringify({ strategies })
+                        });
+
+                        if (syncRes.ok) {
+                            showStatus(`Captured ${strategies.length} strategies & synced`, 'success');
+                        } else {
+                            const err = await syncRes.json();
+                            showStatus(`Captured locally. Sync: ${err.error || 'failed'}`, 'warning');
+                        }
+                    } catch (e) {
+                        console.error('Strategy sync error:', e);
+                        showStatus(`Captured ${strategies.length} strategies (offline)`, 'info');
+                    }
+                } else {
+                    showStatus(`Captured ${strategies.length} strategies`, 'success');
+                }
             } else {
                 showStatus('Failed to scrape. Is it a table?', 'error');
             }
