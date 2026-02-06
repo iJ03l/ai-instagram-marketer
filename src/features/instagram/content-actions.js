@@ -201,15 +201,21 @@
             const response = await chrome.runtime.sendMessage({
                 action: 'generateComment',
                 postContent: postData.text,
-                imageUrls: postData.images, // NEW: Send image URLs for vision
+                imageUrls: postData.images,
                 style: style,
-                customPrompt: state.settings?.customPrompt || ''
+                customPrompt: state.settings?.customPrompt || '',
+                platform: 'instagram',
+                actionType: 'comment'
             });
 
             if (chrome.runtime.lastError) throw new Error('Extension context invalidated');
 
             if (!response || !response.success) {
-                utils.showToast(response?.error || 'Generation failed', 'error');
+                if (response?.error === 'AUTH_REQUIRED') {
+                    utils.showAuthPrompt();
+                } else {
+                    utils.showToast(response?.error || 'Generation failed', 'error');
+                }
                 state.isProcessing = false;
                 return;
             }

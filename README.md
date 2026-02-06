@@ -32,18 +32,25 @@ Crixen is your autonomous partner for digital growth. It organizes your Notion w
 5.  Click **Load Unpacked**.
 6.  Select the project directory.
 
+## Authentication
+
+Crixen uses seamless authentication with the [Crixen Dashboard](https://crixen.xyz).
+
+1.  **Log In**: Go to the Crixen Dashboard and log in.
+2.  **Sync**: The extension automatically detects your session.
+3.  **Start**: Open the extension popup—you're ready to go!
+
 ## Configuration
 
-1.  Click the Crixen icon in your toolbar.
-2.  Enter your **NEAR AI Cloud API Key**.
-3.  Select your preferred model (DeepSeek, GPT-5.2, Claude).
-4.  Choose your default persona (Friendly, Professional, Witty, etc.).
+-   **AI Models**: Select your preferred model (DeepSeek, GPT-5.2, Claude) in the extension settings.
+-   **Persona**: Choose your default persona (Friendly, Professional, Witty, etc.).
+-   **API**: Using Production API (`api.crixen.xyz`).
 
 ## Usage
 
 -   **Instagram**: Look for the "AI Comment" button on posts, or use the Auto-Pilot feature in the popup.
--   **X**: (Coming Soon) Use the "Smith Reply" button on tweets.
--   **Notion**: (Coming Soon) Open the Crixen sidebar to organize content.
+-   **X (Twitter)**: Use the "Smart Reply" button on tweets or Auto-Pilot.
+-   **Notion**: Use the extension to capture page content and generate strategies.
 
 ## License
 

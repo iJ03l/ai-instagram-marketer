@@ -77,6 +77,67 @@
         }, 4000);
     };
 
+    window.InstagramAssistant.showAuthPrompt = function () {
+        const existing = document.querySelectorAll('.ai-auth-prompt');
+        existing.forEach(el => el.remove());
+
+        const toast = document.createElement('div');
+        toast.className = 'ai-auth-prompt';
+        toast.innerHTML = `
+            <div style="display: flex; align-items: center; gap: 12px;">
+                <span>🔒 Login required to use Crixen</span>
+                <button id="crixen-login-btn" style="
+                    background: white; 
+                    color: #007aff; 
+                    border: none; 
+                    padding: 6px 12px; 
+                    border-radius: 12px; 
+                    font-weight: 600; 
+                    cursor: pointer;
+                    font-size: 13px;
+                ">Login</button>
+            </div>
+        `;
+
+        Object.assign(toast.style, {
+            position: 'fixed',
+            bottom: '20px',
+            left: '50%',
+            transform: 'translateX(-50%)',
+            backgroundColor: '#007aff',
+            color: 'white',
+            padding: '12px 20px',
+            borderRadius: '24px',
+            zIndex: '10000',
+            fontFamily: '-apple-system, BlinkMacSystemFont, sans-serif',
+            fontSize: '14px',
+            fontWeight: '500',
+            boxShadow: '0 4px 12px rgba(0,0,0,0.2)',
+            opacity: '0',
+            transition: 'all 0.3s ease'
+        });
+
+        document.body.appendChild(toast);
+
+        document.getElementById('crixen-login-btn').addEventListener('click', () => {
+            window.open('https://crixen.xyz', '_blank');
+            toast.remove();
+        });
+
+        requestAnimationFrame(() => {
+            toast.style.opacity = '1';
+            toast.style.transform = 'translateX(-50%) translateY(-10px)';
+        });
+
+        setTimeout(() => {
+            if (document.body.contains(toast)) {
+                toast.style.opacity = '0';
+                toast.style.transform = 'translateX(-50%) translateY(20px)';
+                setTimeout(() => toast.remove(), 300);
+            }
+        }, 8000); // Longer timeout for action
+    };
+
     window.InstagramAssistant.sleep = function (ms) {
         return new Promise(resolve => setTimeout(resolve, ms));
     };

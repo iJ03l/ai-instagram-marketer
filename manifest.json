@@ -6,17 +6,20 @@
   "permissions": [
     "storage",
     "activeTab",
-    "clipboardWrite"
+    "clipboardWrite",
+    "alarms"
   ],
   "host_permissions": [
     "https://www.instagram.com/*",
     "https://twitter.com/*",
     "https://x.com/*",
     "https://www.notion.so/*",
-    "https://cloud-api.near.ai/*"
+    "https://cloud-api.near.ai/*",
+    "https://api.crixen.xyz/*"
   ],
   "background": {
-    "service_worker": "src/background/background.js"
+    "service_worker": "src/background/background.js",
+    "type": "module"
   },
   "content_scripts": [
     {
@@ -24,6 +27,7 @@
         "https://www.instagram.com/*"
       ],
       "js": [
+        "src/utils/logger.js",
         "src/features/instagram/content-utils.js",
         "src/features/instagram/content-extractor.js",
         "src/features/instagram/content-actions.js",
@@ -41,6 +45,7 @@
         "https://x.com/*"
       ],
       "js": [
+        "src/utils/logger.js",
         "src/features/twitter/twitter-utils.js",
         "src/features/twitter/twitter-extractor.js",
         "src/features/twitter/twitter-actions.js",
@@ -54,11 +59,34 @@
         "https://www.notion.so/*"
       ],
       "js": [
+        "src/utils/logger.js",
         "src/features/notion/content.js"
       ],
       "run_at": "document_idle"
+    },
+    {
+      "matches": [
+        "*://localhost/*",
+        "*://127.0.0.1/*",
+        "*://crixen-web.vercel.app/*",
+        "*://crixen.xyz/*",
+        "*://www.crixen.xyz/*"
+      ],
+      "js": [
+        "src/utils/logger.js",
+        "src/content/auth-bridge.js"
+      ],
+      "run_at": "document_start"
     }
   ],
+  "externally_connectable": {
+    "matches": [
+      "*://localhost/*",
+      "*://127.0.0.1/*",
+      "*://crixen.xyz/*",
+      "*://www.crixen.xyz/*"
+    ]
+  },
   "action": {
     "default_popup": "src/popup/popup.html",
     "default_icon": {

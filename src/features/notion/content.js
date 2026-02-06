@@ -3,7 +3,9 @@
 (function () {
     'use strict';
 
-    console.log('Crixen: Notion Native Script Loaded');
+    const Logger = window.CrixenLogger || console;
+
+    Logger.info('Crixen: Notion Native Script Loaded');
 
     // Wait for Notion to load and observe changes
     const observer = new MutationObserver(() => {
@@ -131,10 +133,24 @@
             // Report context
             container.appendChild(createButton('Report', async () => {
                 showToast('Fetching stats...', 'info');
-                const response = await chrome.runtime.sendMessage({ action: 'getStats' });
-                const stats = response.stats || {};
-                const result = await pushReport(stats);
-                showToast(result.message || 'Done', result.success ? 'success' : 'error');
+                try {
+                    const response = await chrome.runtime.sendMessage({ action: 'getStats' });
+
+                    if (response?.error === 'AUTH_REQUIRED') {
+                        showAuthPrompt();
+                        return;
+                    }
+
+                    const stats = response.stats || {};
+                    const result = await pushReport(stats);
+                    showToast(result.message || 'Done', result.success ? 'success' : 'error');
+                } catch (e) {
+                    if (e.message.includes('validat') || e.message.includes('context')) {
+                        showToast('Extension updated: Please REFRESH page!', 'error');
+                    } else {
+                        showToast('Error: ' + e.message, 'error');
+                    }
+                }
             }, ICONS.report, 'primary', 'Append daily stats to this page'));
         }
 
@@ -153,7 +169,7 @@
             const res = await chrome.runtime.sendMessage(message);
 
             if (res && res.success && res.doc) {
-                console.log('[CRIXEN] Received content:', res.doc.substring(0, 100));
+                Logger.info('[CRIXEN] Received content (truncated)', res.doc.substring(0, 50));
 
                 // ✅ IMPROVED: Better Notion content insertion
                 const success = await insertContentIntoNotion(res.doc, clearPage);
@@ -163,18 +179,24 @@
                 } else {
                     showToast('Error: Could not insert content', 'error');
                 }
+            } else if (res?.error === 'AUTH_REQUIRED') {
+                showAuthPrompt();
             } else {
                 showToast('Generation failed: ' + (res?.error || 'Unknown error'), 'error');
             }
         } catch (e) {
-            console.error('[CRIXEN] Generation error:', e);
-            showToast('Error: ' + e.message, 'error');
+            Logger.error('[CRIXEN] Generation error:', e);
+            if (e.message.includes('validat') || e.message.includes('context')) {
+                showToast('Extension updated: Please REFRESH page!', 'error');
+            } else {
+                showToast('Error: ' + e.message, 'error');
+            }
         }
     }
 
     // ✅ COMPLETELY REWRITTEN: Notion content insertion
     async function insertContentIntoNotion(markdownContent, clearPage = false) {
-        console.log('[CRIXEN] Inserting content into Notion...', { clearPage });
+        Logger.info('[CRIXEN] Inserting content into Notion...', { clearPage });
 
         // Method 1: Try to find the main content editable area
         let target = document.querySelector('.notion-page-content [contenteditable="true"]');
@@ -190,11 +212,11 @@
         }
 
         if (!target) {
-            console.error('[CRIXEN] No editable area found');
+            Logger.error('[CRIXEN] No editable area found');
             return false;
         }
 
-        console.log('[CRIXEN] Found target:', target);
+        Logger.info('[CRIXEN] Found target:', target);
 
         // Focus and wait
         target.click();
@@ -203,7 +225,7 @@
 
         // ✅ Clear page if requested (Robustness)
         if (clearPage) {
-            console.log('[CRIXEN] Clearing page content...');
+            Logger.info('[CRIXEN] Clearing page content...');
             // Select All
             document.execCommand('selectAll', false, null);
             await sleep(100);
@@ -220,7 +242,7 @@
         // ✅ Convert MD to HTML for Rich Paste
         // Notion handles HTML paste much better than raw MD text insertion
         const htmlContent = simpleMarkdownToHtml(markdownContent);
-        console.log('[CRIXEN] Converted MD to HTML length:', htmlContent.length);
+        Logger.info('[CRIXEN] Converted MD to HTML length:', htmlContent.length);
 
         // ✅ Dispatch Paste Event (Best for Formatting)
         let success = false;
@@ -236,18 +258,18 @@
             pasteEvent.clipboardData.setData('text/html', htmlContent);
 
             target.dispatchEvent(pasteEvent);
-            console.log('[CRIXEN] Paste event dispatched with HTML');
+            Logger.info('[CRIXEN] Paste event dispatched with HTML');
 
             await sleep(500);
             success = true;
         } catch (e) {
-            console.error('[CRIXEN] Paste failed:', e);
+            Logger.error('[CRIXEN] Paste failed:', e);
 
             // Fallback to text insertion if paste fails
             try {
                 success = document.execCommand('insertText', false, markdownContent);
             } catch (e2) {
-                console.error('[CRIXEN] Fallback insertText failed:', e2);
+                Logger.error('[CRIXEN] Fallback insertText failed:', e2);
                 success = false;
             }
         }
@@ -285,7 +307,7 @@
                 });
                 return `<table><thead><tr>${headers}</tr></thead><tbody>${rows.join('')}</tbody></table>`;
             });
-        } catch (e) { console.error('Table parse error', e); }
+        } catch (e) { Logger.error('Table parse error', e); }
 
         // 5. Line breaks -> <br> or paragraphs
         // Notion handles newlines in HTML reasonably well, but <br> ensures it.
@@ -514,6 +536,67 @@ ${Object.entries(stats.byStyle || {}).map(([style, count]) => `  ${style}: ${cou
         }, 3000);
     }
 
+    function showAuthPrompt() {
+        const existing = document.querySelectorAll('.crixen-auth-prompt');
+        existing.forEach(el => el.remove());
+
+        const toast = document.createElement('div');
+        toast.className = 'crixen-auth-prompt';
+        toast.innerHTML = `
+            <div style="display: flex; align-items: center; gap: 12px;">
+                <span>🔒 Login required to use Crixen</span>
+                <button id="crixen-notion-login-btn" style="
+                    background: white; 
+                    color: #000; 
+                    border: none; 
+                    padding: 6px 12px; 
+                    border-radius: 6px; 
+                    font-weight: 600; 
+                    cursor: pointer;
+                    font-size: 13px;
+                ">Login</button>
+            </div>
+        `;
+
+        Object.assign(toast.style, {
+            position: 'fixed',
+            bottom: '80px',
+            right: '20px',
+            background: 'rgba(20, 20, 20, 0.95)',
+            border: '1px solid rgba(255, 255, 255, 0.2)',
+            color: 'white',
+            padding: '12px 20px',
+            borderRadius: '8px',
+            zIndex: '10000',
+            fontFamily: '-apple-system, BlinkMacSystemFont, sans-serif',
+            fontSize: '14px',
+            fontWeight: '500',
+            boxShadow: '0 8px 32px 0 rgba(0,0,0,0.5)',
+            opacity: '0',
+            transition: 'all 0.3s ease'
+        });
+
+        document.body.appendChild(toast);
+
+        document.getElementById('crixen-notion-login-btn').addEventListener('click', () => {
+            window.open('https://crixen.xyz', '_blank');
+            toast.remove();
+        });
+
+        requestAnimationFrame(() => {
+            toast.style.opacity = '1';
+            toast.style.transform = 'translateY(0)';
+        });
+
+        setTimeout(() => {
+            if (document.body.contains(toast)) {
+                toast.style.opacity = '0';
+                toast.style.transform = 'translateY(20px)';
+                setTimeout(() => toast.remove(), 300);
+            }
+        }, 8000);
+    }
+
     // Message Listener
     chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
         if (request.action === 'scrapeNotionStrategies') {
@@ -526,7 +609,7 @@ ${Object.entries(stats.byStyle || {}).map(([style, count]) => `  ${style}: ${cou
         }
     });
 
-    console.log('Crixen: Fully initialized with glassmorphism UI');
+    Logger.info('Crixen: Fully initialized with glassmorphism UI');
 
     // ✅ NEW: Glassmorphism Input Modal (Dark Theme Optimized + Scrollbar hidden)
     function createInputModal(title, questions, iconSvg) {

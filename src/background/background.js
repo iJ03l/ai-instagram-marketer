@@ -1,50 +1,139 @@
-// Instagram AI Comment Assistant - Background Service Worker
-// All models powered by NEAR AI Cloud (cloud.near.ai)
+import { CONFIG } from '../config.js';
 
-const NEAR_AI_ENDPOINT = 'https://cloud-api.near.ai/v1/chat/completions';
+// ============================================================================
+// CRIXEN - Industry Standard Social Media AI Agent
+// Background Service Worker
+// ============================================================================
+// All models powered by NEAR AI Cloud (cloud.near.ai)
+// 
+// Key Principles:
+// 1. Platform-Aware: Twitter ≠ Instagram ≠ Notion
+// 2. Brand-First: AI speaks AS the user/brand, not for them
+// 3. Strategy-Driven: User captured strategies take priority
+// 4. Quality-Strict: No generic responses, must reference specific content
+// ============================================================================
+
+const NEAR_AI_ENDPOINT = CONFIG.NEAR_AI_ENDPOINT;
 const API_TIMEOUT = 60000;
+
+// =============================================================================
+// PLATFORM CONTEXT SYSTEM
+// Each platform has unique culture, norms, and best practices
+// =============================================================================
+
+const PLATFORM_CONTEXT = {
+    twitter: {
+        name: 'Twitter/X',
+        culture: 'Fast, witty, punchy. Value brevity, hot takes, and sharp observations. Threads for deeper content.',
+        actionTypes: {
+            reply: {
+                goal: 'Add value to the conversation. Be quotable.',
+                rules: [
+                    'Start strong - the first line must hook',
+                    'One clear idea or take per reply',
+                    'Questions and contrarian takes perform well',
+                    'Agree/disagree + WHY is better than just agreeing'
+                ]
+            },
+            quote: {
+                goal: 'Add your unique perspective, insight, or humor to amplify the original.',
+                rules: [
+                    'Your quote adds value the original lacked',
+                    'Hot takes, humor, or deep insight work best',
+                    'Dont just praise - add substance'
+                ]
+            },
+            post: {
+                goal: 'Create standalone content that stops the scroll.',
+                rules: [
+                    'First line is everything - make them stop scrolling',
+                    'One big idea per post',
+                    'End with a hook, question, or call to engage',
+                    'Be opinionated, not neutral'
+                ]
+            }
+        }
+    },
+    instagram: {
+        name: 'Instagram',
+        culture: 'Visual-first, aspirational, community-driven. Comments build real relationships. Authenticity wins.',
+        actionTypes: {
+            comment: {
+                goal: 'Build genuine connection. Comments here matter for relationships.',
+                rules: [
+                    'Reference the VISUAL content specifically (colors, composition, vibe)',
+                    'Be conversational and warm - this is a community',
+                    'Emojis are expected and add personality',
+                    'Ask questions to spark conversation',
+                    'Personal connection >>> generic praise'
+                ]
+            }
+        }
+    }
+};
+
+// =============================================================================
+// AI MODELS
+// =============================================================================
 
 const AI_MODELS = {
     'deepseek': {
         name: 'DeepSeek V3.1',
         model: 'deepseek-ai/DeepSeek-V3.1',
-        description: '128K context • $1.05/M input • Cheapest',
+        description: 'Fast and efficient',
         vision: false
     },
     'openai': {
         name: 'OpenAI GPT-5.2',
         model: 'openai/gpt-5.2',
-        description: '400K context • $1.8/M input • Vision enabled',
+        description: 'Premium quality',
         vision: true
     },
     'claude': {
         name: 'Claude Sonnet 4.5',
         model: 'anthropic/claude-sonnet-4-5',
-        description: '200K context • $3/M input • Best vision',
+        description: 'Nuanced and thoughtful',
         vision: true
     }
 };
 
+// =============================================================================
+// COMMENT/CONTENT STYLES
+// These define the persona/tone for generation
+// =============================================================================
+
 const COMMENT_STYLES = {
     friendly: {
         name: 'Friendly',
-        prompt: 'Generate a warm, supportive, friendly comment. Include 1-2 relevant emojis. Keep it genuine.'
+        prompt: 'Warm, supportive, genuine energy. Use 1-2 relevant emojis naturally. Be the person everyone wants to talk to.'
     },
     professional: {
         name: 'Professional',
-        prompt: 'Generate a polished, business-appropriate comment. Be thoughtful. Minimal emojis.'
+        prompt: 'Polished, business-appropriate, thoughtful. Show expertise. Minimal emojis. Think "respected industry voice."'
     },
     casual: {
         name: 'Casual',
-        prompt: 'Generate a relaxed, conversational comment like talking to a friend.'
+        prompt: 'Relaxed, conversational, like texting a friend. Natural language, occasional slang, authentic vibe.'
+    },
+    playful: {
+        name: 'Playful',
+        prompt: 'Fun, lighthearted, cheeky energy. Use humor, be a little bold. Match the vibe and add to it.'
+    },
+    'radically-honest': {
+        name: 'Radically Honest',
+        prompt: 'Blunt, direct, no fluff. Call it exactly how you see it. Respect through honesty, not flattery.'
+    },
+    supportive: {
+        name: 'Supportive',
+        prompt: 'Deeply encouraging, validate their experience. Acknowledge the struggle or celebrate the win genuinely.'
     },
     enthusiastic: {
         name: 'Enthusiastic',
-        prompt: 'Generate an energetic, excited comment! Show enthusiasm. Use emojis!'
+        prompt: 'High energy, genuinely excited! Let the enthusiasm show naturally. Emojis welcome when authentic.'
     },
     witty: {
         name: 'Witty',
-        prompt: 'Generate a clever, witty comment with subtle humor. Be smart but not mean.'
+        prompt: 'Clever, sharp, subtle humor. Smart observations, not mean. The kind of comment people screenshot.'
     }
 };
 
@@ -78,14 +167,48 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     (async () => {
         try {
             switch (request.action) {
+                case 'auth:login':
+                    await handleLogin(request.token, request.user, request.expiresAt);
+                    sendResponse({ success: true });
+                    break;
+
+                case 'auth:logout':
+                    await handleLogout();
+                    sendResponse({ success: true });
+                    break;
+
+                case 'auth:refresh':
+                    await handleTokenRefresh(request.token, request.expiresAt);
+                    sendResponse({ success: true });
+                    break;
+
+                case 'ping':
+                    sendResponse({ alive: true });
+                    break;
+
+                case 'auth:getStatus':
+                    const status = await getAuthStatus();
+                    sendResponse(status);
+                    break;
+
                 case 'generateComment':
                     const comment = await generateComment(
                         request.postContent,
                         request.style,
                         request.customPrompt,
-                        request.imageUrls
+                        request.imageUrls,
+                        request.platform || 'instagram',
+                        request.actionType || null
                     );
                     sendResponse({ success: true, comment });
+                    break;
+
+                case 'generatePost':
+                    const postContent = await generatePost(
+                        request.topic,
+                        request.platform || 'twitter'
+                    );
+                    sendResponse({ success: true, comment: postContent });
                     break;
 
                 case 'getSettings':
@@ -135,6 +258,17 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
                     sendResponse({ success: true, doc: toolkitDoc });
                     break;
 
+                // Legacy sync (cleanup if needed, but keeping primarily new auth)
+                case 'loginSync':
+                    console.warn('[Background] Legacy loginSync called. Prefer auth:login.');
+                    if (request.token) {
+                        await handleLogin(request.token, request.user);
+                        sendResponse({ success: true });
+                    } else {
+                        sendResponse({ success: false, error: 'No token' });
+                    }
+                    break;
+
                 default:
                     sendResponse({ error: 'Unknown action' });
             }
@@ -144,6 +278,127 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
         }
     })();
     return true;
+});
+
+// ===== AUTH HANDLERS =====
+
+async function handleLogin(token, user, expiresAt) {
+    console.log('[Auth] Login received for user:', user?.email);
+
+    await chrome.storage.local.set({
+        crixen_auth: {
+            token: token,
+            user: user,
+            expiresAt: expiresAt || Date.now() + (7 * 24 * 60 * 60 * 1000), // 7 days default
+            lastSync: Date.now()
+        },
+        // Backwards compatibility for other parts of extension reading 'token' directly
+        token: token,
+        activeProjectId: 'default' // Default for now
+    });
+
+    // Update badge to show logged-in state (small green indicator)
+    chrome.action.setBadgeText({ text: '✓' });
+    chrome.action.setBadgeBackgroundColor({ color: '#10b981' }); // Green
+
+    // Notify all tabs that auth changed
+    broadcastAuthChange('login', user);
+
+    console.log('[Auth] Login stored successfully');
+}
+
+async function handleLogout() {
+    console.log('[Auth] Logout received');
+
+    await chrome.storage.local.remove(['crixen_auth', 'token', 'activeProjectId']); // Remove legacy keys too
+
+    // Update badge
+    chrome.action.setBadgeText({ text: '' });
+
+    // Notify all tabs
+    broadcastAuthChange('logout', null);
+
+    console.log('[Auth] Logout complete');
+}
+
+async function handleTokenRefresh(newToken, newExpiresAt) {
+    console.log('[Auth] Token refresh');
+
+    const { crixen_auth } = await chrome.storage.local.get('crixen_auth');
+
+    if (crixen_auth) {
+        crixen_auth.token = newToken;
+        crixen_auth.expiresAt = newExpiresAt;
+        crixen_auth.lastSync = Date.now();
+
+        await chrome.storage.local.set({
+            crixen_auth,
+            token: newToken //Sync legacy key
+        });
+        console.log('[Auth] Token refreshed');
+    }
+}
+
+async function getAuthStatus() {
+    const { crixen_auth } = await chrome.storage.local.get('crixen_auth');
+
+    if (!crixen_auth) {
+        return { authenticated: false };
+    }
+
+    // Check if token expired
+    const isExpired = crixen_auth.expiresAt < Date.now();
+
+    return {
+        authenticated: !isExpired,
+        user: crixen_auth.user,
+        expiresAt: crixen_auth.expiresAt,
+        needsRefresh: (crixen_auth.expiresAt - Date.now()) < (24 * 60 * 60 * 1000) // < 24h left
+    };
+}
+
+// Broadcast auth changes to all tabs
+function broadcastAuthChange(type, user) {
+    chrome.tabs.query({}, (tabs) => {
+        tabs.forEach(tab => {
+            chrome.tabs.sendMessage(tab.id, {
+                type: 'CRIXEN_AUTH_CHANGED',
+                authType: type,
+                user: user
+            }).catch(() => {
+                // Tab might not have content script, ignore
+            });
+        });
+    });
+}
+
+// Auto token refresh check (every 5 minutes)
+chrome.alarms.create('tokenRefreshCheck', { periodInMinutes: 5 });
+
+chrome.alarms.onAlarm.addListener(async (alarm) => {
+    if (alarm.name === 'tokenRefreshCheck') {
+        const status = await getAuthStatus();
+
+        if (status.authenticated && status.needsRefresh) {
+            console.log('[Auth] Token expiring soon, requesting refresh from dashboard');
+
+            // Find dashboard tab and request refresh
+            const tabs = await chrome.tabs.query({
+                url: [
+                    'https://crixen.xyz/*',
+                    'https://www.crixen.xyz/*',
+                    'http://localhost:5173/*',
+                    'http://127.0.0.1:5173/*'
+                ]
+            });
+
+            if (tabs.length > 0) {
+                chrome.tabs.sendMessage(tabs[0].id, {
+                    type: 'CRIXEN_REQUEST_TOKEN_REFRESH'
+                });
+            }
+        }
+    }
 });
 
 async function getSettings() {
@@ -228,60 +483,314 @@ async function fetchWithTimeout(url, options, timeout = API_TIMEOUT) {
     }
 }
 
-async function generateComment(postContent, style, customPrompt = '', imageUrls = []) {
+// =============================================================================
+// UNIFIED PROMPT BUILDER
+// Industry-standard approach: layer context for maximum quality
+// =============================================================================
+
+/**
+ * Banned phrases that make AI responses sound generic/bot-like
+ * The AI must NEVER use these - they're instant giveaways of lazy AI
+ */
+const BANNED_PHRASES = [
+    'Great post!',
+    'Love this!',
+    'This is amazing!',
+    'So true!',
+    'Absolutely!',
+    'This resonates',
+    'Well said!',
+    'Couldn\'t agree more!',
+    'This is fire!',
+    'Facts!',
+    'Appreciate you sharing',
+    'Thanks for sharing',
+    'Really needed to hear this',
+    'This hit different',
+    'As someone who',
+    'I absolutely love'
+];
+
+/**
+ * Builds an industry-standard system prompt with layered context
+ * Order matters: Platform → Action → Brand Voice → Style → Rules
+ * 
+ * @param {Object} params
+ * @param {string} params.platform - 'twitter' | 'instagram'
+ * @param {string} params.actionType - 'reply' | 'quote' | 'post' | 'comment'
+ * @param {Object} params.settings - User settings with instructions, capturedStrategies, etc.
+ * @param {string} params.styleKey - The selected style key
+ * @param {string} params.customPrompt - Optional custom prompt override
+ * @returns {string} The complete system prompt
+ */
+function buildSystemPrompt({ platform, actionType, settings, styleKey, customPrompt }) {
+    const platformCtx = PLATFORM_CONTEXT[platform];
+    const actionCtx = platformCtx?.actionTypes?.[actionType];
+
+    // 1. Resolve the style/persona prompt
+    let stylePrompt = '';
+    if (styleKey === 'custom' && customPrompt) {
+        stylePrompt = customPrompt;
+    } else if (styleKey?.startsWith('custom:')) {
+        // User captured strategy from Notion
+        const strategyName = styleKey.split(':')[1];
+        const strategy = (settings.capturedStrategies || []).find(s => s.name === strategyName);
+        stylePrompt = strategy?.prompt || COMMENT_STYLES.friendly.prompt;
+    } else {
+        stylePrompt = COMMENT_STYLES[styleKey]?.prompt || COMMENT_STYLES.friendly.prompt;
+    }
+
+    // 2. Get brand voice instructions (user's core identity)
+    const brandVoice = settings.instructions || '';
+
+    // 3. Build the prompt with clear sections
+    let prompt = `# IDENTITY & ROLE
+
+You ARE the user. You are writing content AS them, not for them.
+You are their voice on ${platformCtx?.name || 'social media'}.
+Never write like an assistant or helper. Never say "I'll help you" or "Here's a response."
+Just BE them and write the ${actionType}.`;
+
+    // Add brand voice if exists (this is the user's core persona)
+    if (brandVoice) {
+        prompt += `
+
+## YOUR BRAND VOICE (PRIORITIZE THIS)
+
+${brandVoice}
+
+This is WHO you are. Every word must align with this voice.`;
+    }
+
+    // Add style layer
+    prompt += `
+
+## YOUR TONE FOR THIS ${actionType.toUpperCase()}
+
+${stylePrompt}`;
+
+    // Add platform context
+    if (platformCtx) {
+        prompt += `
+
+## PLATFORM: ${platformCtx.name}
+
+Cultural Context: ${platformCtx.culture}`;
+    }
+
+    // Add action-specific rules
+    if (actionCtx) {
+        prompt += `
+
+## ${actionType.toUpperCase()} RULES
+
+Goal: ${actionCtx.goal}
+
+${actionCtx.rules.map((rule, i) => `${i + 1}. ${rule}`).join('\n')}`;
+    }
+
+    // Add strict quality rules (non-negotiable)
+    prompt += `
+
+# STRICT QUALITY RULES (NON-NEGOTIABLE)
+
+1. **Specific NOT Generic**: Reference SPECIFIC details from the content. Never be vague.
+
+2. **Banned Phrases** - NEVER use these (instant red flags):
+${BANNED_PHRASES.map(p => `   - "${p}"`).join('\n')}
+
+3. **Formatting**:
+   - Use DOUBLE LINE BREAKS between sentences/thoughts for visual spacing
+   - NO em dashes (—), en dashes (–), or double hyphens (--)
+   - Maximum 3 emojis, only if natural for your persona
+
+4. **Authenticity**: Write like a real person with opinions, not a sycophantic bot.
+
+5. **Value-Add**: Every ${actionType} must add value. What's YOUR take? What insight are YOU adding?`;
+
+    return prompt;
+}
+
+/**
+ * Platform-aware post-processing
+ * Cleans up AI output to match platform norms
+ */
+function postProcessContent(content, platform) {
+    if (!content) return '';
+
+    let cleaned = content.trim()
+        // Remove dashes (forbidden in style guide)
+        .replace(/—/g, ' ')   // Em dash
+        .replace(/–/g, ' ')   // En dash
+        .replace(/--/g, ' ')  // Double hyphen
+        // Clean up multiple spaces
+        .replace(/  +/g, ' ');
+
+    // Force double spacing for readability
+    cleaned = cleaned.replace(/\r\n/g, '\n').replace(/\n+/g, '\n\n');
+
+    // Platform-specific cleanup
+    if (platform === 'twitter') {
+        // Remove trailing hashtags if more than 2
+        const hashtagMatches = cleaned.match(/#\w+/g) || [];
+        if (hashtagMatches.length > 2) {
+            // Keep first 2 hashtags, remove others
+            hashtagMatches.slice(2).forEach(tag => {
+                cleaned = cleaned.replace(new RegExp(`\\s*${tag}`, 'g'), '');
+            });
+        }
+    }
+
+    // Check for banned phrases and log warning (don't auto-fix, could break content)
+    BANNED_PHRASES.forEach(phrase => {
+        if (cleaned.toLowerCase().includes(phrase.toLowerCase())) {
+            console.warn(`[PostProcess] Content contains banned phrase: "${phrase}"`);
+        }
+    });
+
+    return cleaned;
+}
+
+/**
+ * Generate a comment/reply using the unified prompt builder
+ * Now accepts platform and actionType for full context awareness
+ * 
+ * @param {string} postContent - The content being responded to
+ * @param {string} style - Style key (friendly, witty, custom:StrategyName, etc.)
+ * @param {string} customPrompt - Optional custom prompt override
+ * @param {string[]} imageUrls - Image URLs for vision models
+ * @param {string} platform - 'twitter' | 'instagram' (default: 'instagram')
+ * @param {string} actionType - 'reply' | 'quote' | 'comment' (default: based on platform)
+ */
+async function generateComment(postContent, style, customPrompt = '', imageUrls = [], platform = 'instagram', actionType = null) {
     const settings = await getSettings();
+
+    // Validate model
     let modelKey = settings.selectedModel || 'deepseek';
     if (!AI_MODELS[modelKey]) {
-        console.warn(`[generateComment] Invalid model '${modelKey}' selected. Falling back to 'deepseek'.`);
+        console.warn(`[generateComment] Invalid model '${modelKey}'. Falling back to 'deepseek'.`);
         modelKey = 'deepseek';
     }
 
-    const modelConfig = AI_MODELS[modelKey];
-    const apiKey = settings.apiKey ? settings.apiKey.replace(/[<>\s]/g, '') : '';
+    // Determine action type if not specified
+    const resolvedActionType = actionType || (platform === 'twitter' ? 'reply' : 'comment');
 
-    if (!apiKey) throw new Error('No API key');
+    // Build the industry-standard system prompt
+    const systemPrompt = buildSystemPrompt({
+        platform,
+        actionType: resolvedActionType,
+        settings,
+        styleKey: style,
+        customPrompt
+    });
 
-    const stylePrompt = style === 'custom' && customPrompt
-        ? customPrompt
-        : (style.startsWith('custom:')
-            ? ((settings.capturedStrategies || []).find(s => s.name === style.split(':')[1])?.prompt || COMMENT_STYLES.friendly.prompt)
-            : COMMENT_STYLES[style]?.prompt || COMMENT_STYLES.friendly.prompt);
+    console.log(`[generateComment] Platform: ${platform}, Action: ${resolvedActionType}, Style: ${style}`);
 
-    const globalInstructions = settings.instructions ? `\nInstructions: ${settings.instructions}` : '';
+    // Auth Check
+    const { token, activeProjectId } = await new Promise(resolve =>
+        chrome.storage.local.get(['token', 'activeProjectId'], resolve)
+    );
 
-    const systemPrompt = `You are an Instagram comment assistant.
-Rules:
-- Simple, relevant, human.
-- Max 3 emojis.
-- Style: ${stylePrompt}${globalInstructions}`;
-
-    let userMessageContent;
-    if (modelConfig.vision && imageUrls && imageUrls.length > 0) {
-        userMessageContent = [
-            { type: 'text', text: `Context:\n${postContent}` },
-            ...imageUrls.map(url => ({ type: 'image_url', image_url: { url, detail: 'auto' } }))
-        ];
-    } else {
-        userMessageContent = `Context:\n${postContent}`;
+    if (!token) {
+        console.error('No auth token found. Please login.');
+        return { error: 'AUTH_REQUIRED' };
     }
 
+    const projectId = activeProjectId || 'default';
+
     const payload = {
-        model: modelConfig.model,
-        messages: [
-            { role: 'system', content: systemPrompt },
-            { role: 'user', content: userMessageContent }
-        ],
-        max_tokens: 200,
-        temperature: 0.8
+        projectId,
+        prompt: systemPrompt,
+        context: postContent
     };
 
-    console.log('[generateComment] Payload:', JSON.stringify(payload));
+    console.log('[generateComment] Calling Crixen API with unified prompt');
 
-    const response = await fetchWithTimeout(NEAR_AI_ENDPOINT, {
+    const CRIXEN_API_URL = CONFIG.API_URL;
+
+    const response = await fetchWithTimeout(CRIXEN_API_URL, {
         method: 'POST',
-        headers: { 'Authorization': `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
+        headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${token}`
+        },
         body: JSON.stringify(payload)
     });
+
+    if (response.status === 401) {
+        return { error: 'AUTH_REQUIRED' };
+    }
+
+    if (!response.ok) {
+        let errorMessage;
+        try {
+            const errorData = await response.json();
+            errorMessage = errorData.error || await response.text();
+        } catch (e) {
+            errorMessage = await response.text();
+        }
+        throw new Error(errorMessage);
+    }
+
+    const data = await response.json();
+    let content = data.content || data.choices?.[0]?.message?.content || 'No response';
+
+    // Apply platform-aware post-processing
+    return postProcessContent(content, platform);
+}
+
+/**
+ * Generate a new post using the unified prompt builder
+ * Always uses Twitter/post context since this is for creating new content
+ * 
+ * @param {string} topic - The topic/vibe for the post
+ * @param {string} platform - 'twitter' | 'instagram' (default: 'twitter')
+ */
+async function generatePost(topic, platform = 'twitter') {
+    const settings = await getSettings();
+
+    // Auth Check
+    const { token, activeProjectId } = await new Promise(resolve =>
+        chrome.storage.local.get(['token', 'activeProjectId'], resolve)
+    );
+
+    if (!token) return { error: 'AUTH_REQUIRED' };
+
+    const projectId = activeProjectId || 'default';
+    const style = settings.defaultStyle || 'professional';
+    const customPrompt = settings.customPrompt || '';
+
+    // Build the industry-standard system prompt for post creation
+    const systemPrompt = buildSystemPrompt({
+        platform,
+        actionType: 'post',
+        settings,
+        styleKey: style,
+        customPrompt
+    });
+
+    console.log(`[generatePost] Platform: ${platform}, Style: ${style}, Topic: ${topic.substring(0, 50)}...`);
+
+    const payload = {
+        projectId,
+        prompt: systemPrompt,
+        context: topic
+    };
+
+    const CRIXEN_API_URL = CONFIG.API_URL;
+
+    const response = await fetchWithTimeout(CRIXEN_API_URL, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify(payload)
+    });
+
+    if (response.status === 401) {
+        return { error: 'AUTH_REQUIRED' };
+    }
 
     if (!response.ok) {
         const err = await response.text();
@@ -289,7 +798,10 @@ Rules:
     }
 
     const data = await response.json();
-    return data.choices?.[0]?.message?.content?.trim() || 'No response';
+    let content = data.content || data.choices?.[0]?.message?.content || 'No response';
+
+    // Apply platform-aware post-processing
+    return postProcessContent(content, platform);
 }
 
 // --- GENERIC CALLER FOR NOTION TOOLS ---
