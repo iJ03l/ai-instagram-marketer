@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Crixen",
-  "version": "2.0.0",
+  "version": "2.2.0",
   "description": "The ultimate social media AI agent. Organizes Notion, posts on Instagram & X, and manages your brand strategy.",
   "permissions": [
     "storage",
