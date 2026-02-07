@@ -306,12 +306,38 @@ function renderProjectDropdown(projects, token, limits = { maxProjects: 1 }) {
 
 // Load brand voice and strategies from a project into local settings
 async function loadProjectSettings(project) {
+    let fullProject = project;
+
+    // Check if data is masked (NOVA Secured) - If so, fetch full details which are decrypted by API
+    if (project.brand_voice === '**SECURED ON NOVA**' ||
+        (project.strategies && project.strategies.length > 0 && Object.keys(project.strategies[0]).length === 0)) {
+        console.log('[Crixen] Detected masked data, fetching decrypted details for:', project.name);
+        try {
+            const { token } = await new Promise(r => chrome.storage.local.get('token', r));
+            if (token) {
+                const res = await fetch(`${CONFIG.API_URL.replace('/ai/generate', '')}/projects/${project.id}`, {
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+                if (res.ok) {
+                    fullProject = await res.json();
+
+                    // Optional: Update local cache with this fresh data so we don't refetch on every dropdown change?
+                    // For now, simpler is better. We trust the browser cache or network speed.
+                } else {
+                    console.warn('Failed to fetch project details:', res.status);
+                }
+            }
+        } catch (e) {
+            console.error('Failed to fetch unmasked project details', e);
+        }
+    }
+
     const oldSettings = await new Promise(r => chrome.storage.local.get(['settings'], res => r(res.settings || {})));
 
     const newSettings = {
         ...oldSettings,
-        instructions: project.brand_voice || '',
-        capturedStrategies: project.strategies || []
+        instructions: fullProject.brand_voice || '',
+        capturedStrategies: fullProject.strategies || []
     };
 
     await chrome.storage.local.set({ settings: newSettings });
@@ -323,8 +349,7 @@ async function loadProjectSettings(project) {
     const voiceDisplay = document.getElementById('voiceDisplay');
     if (voiceDisplay) voiceDisplay.textContent = newSettings.instructions || 'No brand voice defined.';
 
-    // Toggle edit mode based on whether there's a brand voice
-    toggleVoiceEditMode(!newSettings.instructions);
+
 
     // Update strategies display if visible
     const strategiesCount = document.getElementById('strategiesCount');
@@ -394,7 +419,7 @@ async function loadSettings() {
     });
 }
 
-// toggleVoiceEditMode removed - brand voice is now read-only in extension
+
 
 function renderStrategies(strategies) {
     const list = document.getElementById('capturedStrategiesList');
@@ -486,15 +511,8 @@ function setupEventListeners() {
         twAutoBtn.addEventListener('click', () => toggleAutoPilot('twitter'));
     }
 
-    // Notion Actions
-    const scrapeBtn = document.getElementById('scrapeNotionBtn');
-    if (scrapeBtn) {
-        scrapeBtn.addEventListener('click', scrapeNotion);
-    }
-    const pushBtn = document.getElementById('pushNotionBtn');
-    if (pushBtn) {
-        pushBtn.addEventListener('click', pushNotionReport);
-    }
+    // Notion Actions - Removed (Handled in-page)
+
 }
 
 // --- Tab Logic ---
@@ -520,7 +538,9 @@ function switchTab(tabId) {
     // Refresh platform status
     if (tabId === 'instagram') checkAutoStatus('instagram');
     if (tabId === 'twitter') checkAutoStatus('twitter');
-    if (tabId === 'notion') checkNotionStatus();
+    if (tabId === 'notion') {
+        // No status check needed anymore
+    }
 }
 
 // --- Helper Functions ---
@@ -632,113 +652,8 @@ function showSaveSuccess(syncStatus) {
     }, 3000);
 }
 
-// --- Notion Logic ---
+// Notion Logic removed (Moved to Content Script buttons)
 
-function checkNotionStatus() {
-    const statusBadge = document.getElementById('notionPageStatus');
-    const titleEl = document.getElementById('notionPageTitle');
-    const scrapeBtn = document.getElementById('scrapeNotionBtn');
-    const pushBtn = document.getElementById('pushNotionBtn');
-
-    if (!statusBadge) return;
-
-    chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
-        const url = tabs[0]?.url || '';
-        if (url.includes('notion.so')) {
-            // Check if content script is alive
-            chrome.tabs.sendMessage(tabs[0].id, { action: 'checkNotionPage' }, (response) => {
-                if (chrome.runtime.lastError || !response) {
-                    statusBadge.textContent = 'ERROR';
-                    titleEl.textContent = 'Refresh page.';
-                    return;
-                }
-                statusBadge.textContent = 'ACTIVE';
-                statusBadge.classList.add('running'); // Reuse distinct style
-                titleEl.textContent = response.title.length > 30 ? response.title.substring(0, 30) + '...' : response.title;
-
-                scrapeBtn.disabled = false;
-                pushBtn.disabled = false;
-            });
-        } else {
-            statusBadge.textContent = 'NO PAGE';
-            statusBadge.classList.remove('running');
-            titleEl.textContent = 'Open Notion to capture/sync.';
-            scrapeBtn.disabled = true;
-            pushBtn.disabled = true;
-        }
-    });
-}
-
-function scrapeNotion() {
-    showStatus('Scraping...', 'info');
-    chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
-        chrome.tabs.sendMessage(tabs[0].id, { action: 'scrapeNotionStrategies' }, async (response) => {
-            if (response && response.success) {
-                const strategies = response.strategies.map((s, i) => ({
-                    id: s.id || Date.now().toString() + i,
-                    name: s.name || 'Strategy ' + (i + 1),
-                    prompt: s.prompt || '',
-                    source: 'notion',
-                    created_at: new Date().toISOString()
-                }));
-
-                // Save locally
-                const settings = await new Promise(r => chrome.storage.local.get(['settings'], res => r(res.settings || {})));
-                settings.capturedStrategies = strategies;
-                await chrome.storage.local.set({ settings });
-                renderStrategies(strategies);
-
-                // Sync to backend
-                const { token, activeProjectId } = await new Promise(r =>
-                    chrome.storage.local.get(['token', 'activeProjectId'], r)
-                );
-
-                if (token && activeProjectId) {
-                    try {
-                        const syncRes = await fetch(`${CONFIG.API_URL.replace('/ai/generate', '')}/projects/${activeProjectId}/strategies`, {
-                            method: 'PUT',
-                            headers: {
-                                'Authorization': `Bearer ${token}`,
-                                'Content-Type': 'application/json'
-                            },
-                            body: JSON.stringify({ strategies })
-                        });
-
-                        if (syncRes.ok) {
-                            showStatus(`Captured ${strategies.length} strategies & synced`, 'success');
-                        } else {
-                            const err = await syncRes.json();
-                            showStatus(`Captured locally. Sync: ${err.error || 'failed'}`, 'warning');
-                        }
-                    } catch (e) {
-                        console.error('Strategy sync error:', e);
-                        showStatus(`Captured ${strategies.length} strategies (offline)`, 'info');
-                    }
-                } else {
-                    showStatus(`Captured ${strategies.length} strategies`, 'success');
-                }
-            } else {
-                showStatus('Failed to scrape. Is it a table?', 'error');
-            }
-        });
-    });
-}
-
-async function pushNotionReport() {
-    showStatus('Preparing report...', 'info');
-    // Get Stats
-    const stats = await new Promise(r => chrome.runtime.sendMessage({ action: 'getStats' }, res => r(res.stats || {})));
-
-    chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
-        chrome.tabs.sendMessage(tabs[0].id, { action: 'pushNotionReport', stats }, (response) => {
-            if (response && response.success) {
-                showStatus('Report pushed!', 'success');
-            } else {
-                showStatus(response?.message || 'Failed push', 'error');
-            }
-        });
-    });
-}
 
 
 // --- Auto Pilot Logic (Generic) ---

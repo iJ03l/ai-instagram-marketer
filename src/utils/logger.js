@@ -9,7 +9,7 @@
     'use strict';
 
     // Force debug mode false for production/release, true for dev
-    const DEBUG_MODE = false; // TODO: Set to false for production release
+    const DEBUG_MODE = true; // TODO: Set to false for production release
 
     const PREFIX = '[Crixen]';
 

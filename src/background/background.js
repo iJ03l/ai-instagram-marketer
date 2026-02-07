@@ -46,6 +46,8 @@ const PLATFORM_CONTEXT = {
             post: {
                 goal: 'Create standalone content that stops the scroll.',
                 rules: [
+                    'EXPAND on the input topic/vibe into a full thought, story, or observation.',
+                    'If the input is a question, use it as a prompt for a post, do NOT answer it directly like a chatbot.',
                     'First line is everything - make them stop scrolling',
                     'One big idea per post',
                     'End with a hook, question, or call to engage',
@@ -448,11 +450,41 @@ async function updateStrategies(newStrategies) {
     await chrome.storage.local.set({ settings });
 
     // Try to sync to NOVA via backend
-    const { crixen_auth, activeProjectId } = await chrome.storage.local.get(['crixen_auth', 'activeProjectId']);
+    const storageData = await chrome.storage.local.get(['crixen_auth', 'activeProjectId']);
+    const crixen_auth = storageData.crixen_auth;
+    let activeProjectId = storageData.activeProjectId;
 
     if (crixen_auth?.token) {
         try {
             const CRIXEN_API_URL = CONFIG.API_URL.replace('/api/v1/ai/generate', '');
+
+            // Ensure we have a valid numeric Project ID
+            if (!activeProjectId || activeProjectId === 'default') {
+                console.log('[NOVA] No active project set, fetching default...');
+                try {
+                    const projectRes = await fetch(`${CRIXEN_API_URL}/api/v1/projects`, {
+                        headers: { 'Authorization': `Bearer ${crixen_auth.token}` }
+                    });
+                    if (projectRes.ok) {
+                        const pData = await projectRes.json();
+                        if (pData.projects && pData.projects.length > 0) {
+                            activeProjectId = pData.projects[0].id;
+                            // Save for future use
+                            await chrome.storage.local.set({ activeProjectId });
+                            console.log('[NOVA] Auto-selected project:', activeProjectId);
+                        }
+                    }
+                } catch (e) {
+                    console.warn('[NOVA] Failed to fetch default project:', e);
+                }
+            }
+
+            // If still no project ID, we can't sync to a specific project DB record
+            // But we can still upload to Nova as an orphan if needed (though dashboard won't see it via project view)
+            if (!activeProjectId || activeProjectId === 'default') {
+                console.warn('[NOVA] Aborting sync: No valid Project ID found.');
+                return;
+            }
 
             const response = await fetch(`${CRIXEN_API_URL}/api/v1/nova/upload`, {
                 method: 'POST',
@@ -461,7 +493,7 @@ async function updateStrategies(newStrategies) {
                     'Authorization': `Bearer ${crixen_auth.token}`
                 },
                 body: JSON.stringify({
-                    projectId: activeProjectId || null,
+                    projectId: activeProjectId,
                     strategyData: newStrategies,
                     groupId: 'crixen-strategies'
                 })
@@ -888,43 +920,62 @@ async function generatePost(topic, platform = 'twitter') {
 // --- GENERIC CALLER FOR NOTION TOOLS ---
 
 async function callNearAI(prompt, maxTokens = null) {
-    const settings = await getSettings();
-    // Map simple key to full model ID
-    const modelKey = settings.selectedModel || 'deepseek';
-    const modelID = AI_MODELS[modelKey]?.model || 'deepseek-ai/DeepSeek-V3.1';
+    // Use the Crixen Backend API (same as generateComment)
+    const { token } = await chrome.storage.local.get('token');
 
-    // Fallback cleanup if user data has old V3 string
-    // This is less likely with new keys, but safe to keep logic simple
+    if (!token) {
+        throw new Error('Not authenticated. Please login to crixen.xyz');
+    }
 
-    const apiKey = settings.apiKey ? settings.apiKey.replace(/[<>\s]/g, '') : '';
-    if (!apiKey) throw new Error('No API key');
+    const CRIXEN_API_URL = CONFIG.API_URL;
 
-    // STRICT MINIMAL PAYLOAD for Strategy/Report
     const payload = {
-        model: modelID,
-        messages: [{ role: 'user', content: prompt }]
+        projectId: 'notion-tools', // Special identifier for Notion tools
+        prompt: prompt,
+        context: '' // No context needed for Notion generators
     };
 
-    if (maxTokens) payload.max_tokens = maxTokens;
+    if (maxTokens) {
+        payload.maxTokens = maxTokens;
+    }
 
-    console.log('[callNearAI] Request:', JSON.stringify(payload));
+    console.log('[callNearAI] Calling Crixen API for Notion tool');
+    console.log('[callNearAI] API URL:', CRIXEN_API_URL);
+    console.log('[callNearAI] Payload:', JSON.stringify(payload).substring(0, 500));
 
-    const response = await fetchWithTimeout(NEAR_AI_ENDPOINT, {
+    const response = await fetchWithTimeout(CRIXEN_API_URL, {
         method: 'POST',
-        headers: { 'Authorization': `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
+        headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${token}`
+        },
         body: JSON.stringify(payload)
     });
 
+    console.log('[callNearAI] Response status:', response.status);
+
     if (!response.ok) {
         const err = await response.text();
-        throw new Error(`AI API Error: ${response.status} - ${err}`);
+        console.error('[callNearAI] API error response:', err);
+        throw new Error(`API Error: ${response.status} - ${err}`);
     }
 
     const data = await response.json();
-    const content = data.choices?.[0]?.message?.content?.trim();
-    if (!content) throw new Error('Empty AI response');
-    return content.replace(/^["']|["']$/g, '').trim(); // Clean quotes
+    console.log('[callNearAI] Full API response:', JSON.stringify(data).substring(0, 1000));
+
+    const content = data.content || data.choices?.[0]?.message?.content || '';
+
+    console.log('[callNearAI] Extracted content length:', content.length);
+    console.log('[callNearAI] Content preview:', content.substring(0, 200));
+
+    if (!content) {
+        console.error('[callNearAI] Empty AI response. Full data:', data);
+        throw new Error('Empty AI response');
+    }
+
+    return content.trim().replace(/^["']|["']$/g, ''); // Clean quotes
 }
+
 
 // --- NOTION GENERATORS ---
 

@@ -63,96 +63,94 @@
         });
 
         // Add Context-Specific Buttons
-        if (context.type === 'table') {
-            container.appendChild(createButton('Capture', async () => {
-                const strategies = scrapeStrategies();
-                if (strategies.length > 0) {
-                    await chrome.runtime.sendMessage({ action: 'saveStrategies', strategies });
-                    showToast(`Captured ${strategies.length} strategies!`, 'success');
+        // Unified: All tools available on all pages
+
+        // 1. Strategy Button
+        container.appendChild(createButton('Strategy', async () => {
+            const questions = [
+                { id: 'brandName', label: 'Brand/Business Name', type: 'text', required: true },
+                { id: 'industry', label: 'Industry/Niche', type: 'text', required: true },
+                { id: 'audience_mission', label: 'Target Audience, Mission', type: 'textarea', required: true },
+                { id: 'brandVoice', label: 'Brand Voice/Tone', type: 'text' },
+                { id: 'usp', label: 'Unique Selling Point', type: 'textarea' }
+            ];
+            const answers = await createInputModal('Brand Strategy Builder', questions, ICONS.strategy);
+            if (answers) await generateAndInsertContent('generateStrategyDoc', 'Strategy', null, true, answers);
+        }, ICONS.strategy, 'secondary', 'Generate a full brand strategy document'));
+
+        // 2. Calendar Tool
+        container.appendChild(createButton('Calendar', async () => {
+            const questions = [
+                { id: 'brandName', label: 'Brand/Business Name', type: 'text', required: true },
+                { id: 'description', label: 'Description', type: 'textarea' },
+                { id: 'industry', label: 'Industry', type: 'text', required: true },
+                { id: 'frequency', label: 'Posts per Week', type: 'select', options: ['3', '5', '7', '10+'], required: true }
+            ];
+            const answers = await createInputModal('Content Calendar Setup', questions, ICONS.calendar);
+            if (answers) await generateAndInsertContent('generateToolkit', 'Content Calendar', 'calendar', true, answers);
+        }, ICONS.calendar, 'secondary', 'Create a social media content calendar'));
+
+        // 3. Audit Tool
+        container.appendChild(createButton('Audit', async () => {
+            const questions = [
+                { id: 'brandName', label: 'Your Brand Name', type: 'text', required: true },
+                { id: 'industry', label: 'Industry', type: 'text', required: true },
+                { id: 'description', label: 'Description', type: 'textarea' },
+                { id: 'analyze_what', label: 'What to analyze?', type: 'multiselect', options: ['Content Strategy', 'Engagement', 'Visuals', 'Hashtags', 'Competitors'], required: true },
+                { id: 'strength', label: 'Your Current Strength', type: 'text' }
+            ];
+            const answers = await createInputModal('Competitor Audit Setup', questions, ICONS.audit);
+            if (answers) await generateAndInsertContent('generateToolkit', 'Competitor Audit', 'audit', true, answers);
+        }, ICONS.audit, 'secondary', 'Generate a competitor analysis report'));
+
+        // 4. Influencer Tool
+        container.appendChild(createButton('Influencer', async () => {
+            const questions = [
+                { id: 'goal', label: 'Campaign Goal', type: 'select', options: ['Brand Awareness', 'Sales/Conversions', 'UGC Creation', 'Event Promotion'], required: true },
+                { id: 'industry', label: 'Industry/Niche', type: 'text', required: true },
+                { id: 'budget', label: 'Budget Range', type: 'select', options: ['$0-$500', '$500-$2000', '$2000-$10k', '$10k+'], required: true },
+                { id: 'platforms', label: 'Target Platforms', type: 'multiselect', options: ['Instagram', 'TikTok', 'YouTube', 'X/Twitter', 'LinkedIn'], required: true },
+                { id: 'deliverables', label: 'Expected Deliverables', type: 'textarea' },
+                { id: 'timeline', label: 'Campaign Timeline', type: 'text' }
+            ];
+            const answers = await createInputModal('Influencer Campaign Setup', questions, ICONS.influencer);
+            if (answers) await generateAndInsertContent('generateToolkit', 'Influencer Tracker', 'influencer', true, answers);
+        }, ICONS.influencer, 'secondary', 'Create an influencer tracking database'));
+
+        // 5. Capture Button (Primary)
+        container.appendChild(createButton('Capture', async () => {
+            const strategies = await scrapeStrategies();
+            if (strategies.length > 0) {
+                await chrome.runtime.sendMessage({ action: 'saveStrategies', strategies });
+                showToast(`Captured ${strategies.length} strategies!`, 'success');
+            } else {
+                showToast('No structured data found (Need Name & Prompt)', 'error');
+            }
+        }, ICONS.capture, 'primary', 'Capture strategies from selection or page'));
+
+        // 6. Report Button
+        container.appendChild(createButton('Report', async () => {
+            showToast('Fetching stats...', 'info');
+            try {
+                const response = await chrome.runtime.sendMessage({ action: 'getStats' });
+
+                if (response?.error === 'AUTH_REQUIRED') {
+                    showAuthPrompt();
+                    return;
+                }
+
+                const stats = response.stats || {};
+                const result = await pushReport(stats);
+
+                showToast(result.message || 'Done', result.success ? 'success' : 'error');
+            } catch (e) {
+                if (e.message.includes('validat') || e.message.includes('context')) {
+                    showToast('Extension updated: Please REFRESH page!', 'error');
                 } else {
-                    showToast('No valid rows found (Need Name & Prompt)', 'error');
+                    showToast('Error: ' + e.message, 'error');
                 }
-            }, ICONS.capture, 'primary', 'Scrape strategies from this table'));
-
-        } else if (context.type === 'empty') {
-            // Strategy Button (Primary)
-            container.appendChild(createButton('Strategy', async () => {
-                const questions = [
-                    { id: 'brandName', label: 'Brand/Business Name', type: 'text', required: true },
-                    { id: 'industry', label: 'Industry/Niche', type: 'text', required: true },
-                    { id: 'audience_mission', label: 'Target Audience, Mission', type: 'textarea', required: true },
-                    { id: 'brandVoice', label: 'Brand Voice/Tone', type: 'text' },
-                    { id: 'usp', label: 'Unique Selling Point', type: 'textarea' }
-                ];
-                // Pass Icon here
-                const answers = await createInputModal('Brand Strategy Builder', questions, ICONS.strategy);
-                if (answers) await generateAndInsertContent('generateStrategyDoc', 'Strategy', null, true, answers);
-            }, ICONS.strategy, 'primary', 'Generate a full brand strategy document'));
-
-            // Toolkit Buttons
-            // Calendar Tool
-            container.appendChild(createButton('Calendar', async () => {
-                const questions = [
-                    { id: 'brandName', label: 'Brand/Business Name', type: 'text', required: true },
-                    { id: 'description', label: 'Description', type: 'textarea' },
-                    { id: 'industry', label: 'Industry', type: 'text', required: true },
-                    { id: 'frequency', label: 'Posts per Week', type: 'select', options: ['3', '5', '7', '10+'], required: true }
-                ];
-                const answers = await createInputModal('Content Calendar Setup', questions, ICONS.calendar);
-                if (answers) await generateAndInsertContent('generateToolkit', 'Content Calendar', 'calendar', true, answers);
-            }, ICONS.calendar, 'secondary', 'Create a social media content calendar'));
-
-            // Audit Tool
-            container.appendChild(createButton('Audit', async () => {
-                const questions = [
-                    { id: 'brandName', label: 'Your Brand Name', type: 'text', required: true },
-                    { id: 'industry', label: 'Industry', type: 'text', required: true },
-                    { id: 'description', label: 'Description', type: 'textarea' },
-                    { id: 'analyze_what', label: 'What to analyze?', type: 'multiselect', options: ['Content Strategy', 'Engagement', 'Visuals', 'Hashtags', 'Competitors'], required: true },
-                    { id: 'strength', label: 'Your Current Strength', type: 'text' }
-                ];
-                const answers = await createInputModal('Competitor Audit Setup', questions, ICONS.audit);
-                if (answers) await generateAndInsertContent('generateToolkit', 'Competitor Audit', 'audit', true, answers);
-            }, ICONS.audit, 'secondary', 'Generate a competitor analysis report'));
-
-            // Influencer Tool
-            container.appendChild(createButton('Influencer', async () => {
-                const questions = [
-                    { id: 'goal', label: 'Campaign Goal', type: 'select', options: ['Brand Awareness', 'Sales/Conversions', 'UGC Creation', 'Event Promotion'], required: true },
-                    { id: 'industry', label: 'Industry/Niche', type: 'text', required: true },
-                    { id: 'budget', label: 'Budget Range', type: 'select', options: ['$0-$500', '$500-$2000', '$2000-$10k', '$10k+'], required: true },
-                    { id: 'platforms', label: 'Target Platforms', type: 'multiselect', options: ['Instagram', 'TikTok', 'YouTube', 'X/Twitter', 'LinkedIn'], required: true },
-                    { id: 'deliverables', label: 'Expected Deliverables', type: 'textarea' },
-                    { id: 'timeline', label: 'Campaign Timeline', type: 'text' }
-                ];
-                const answers = await createInputModal('Influencer Campaign Setup', questions, ICONS.influencer);
-                if (answers) await generateAndInsertContent('generateToolkit', 'Influencer Tracker', 'influencer', true, answers);
-            }, ICONS.influencer, 'secondary', 'Create an influencer tracking database'));
-
-        } else {
-            // Report context
-            container.appendChild(createButton('Report', async () => {
-                showToast('Fetching stats...', 'info');
-                try {
-                    const response = await chrome.runtime.sendMessage({ action: 'getStats' });
-
-                    if (response?.error === 'AUTH_REQUIRED') {
-                        showAuthPrompt();
-                        return;
-                    }
-
-                    const stats = response.stats || {};
-                    const result = await pushReport(stats);
-                    showToast(result.message || 'Done', result.success ? 'success' : 'error');
-                } catch (e) {
-                    if (e.message.includes('validat') || e.message.includes('context')) {
-                        showToast('Extension updated: Please REFRESH page!', 'error');
-                    } else {
-                        showToast('Error: ' + e.message, 'error');
-                    }
-                }
-            }, ICONS.report, 'primary', 'Append daily stats to this page'));
-        }
+            }
+        }, ICONS.report, 'secondary', 'Append daily stats to this page'));
 
         // Insert into DOM
         actionsContainer.prepend(container);
@@ -166,10 +164,13 @@
             const message = { action, additionalContext };
             if (toolType) message.toolType = toolType;
 
+            Logger.info('[CRIXEN] Sending message to background:', JSON.stringify(message));
             const res = await chrome.runtime.sendMessage(message);
+            Logger.info('[CRIXEN] Response from background:', JSON.stringify(res));
 
             if (res && res.success && res.doc) {
-                Logger.info('[CRIXEN] Received content (truncated)', res.doc.substring(0, 50));
+                Logger.info('[CRIXEN] Received content length:', res.doc.length);
+                Logger.info('[CRIXEN] Content preview:', res.doc.substring(0, 200));
 
                 // ✅ IMPROVED: Better Notion content insertion
                 const success = await insertContentIntoNotion(res.doc, clearPage);
@@ -182,6 +183,7 @@
             } else if (res?.error === 'AUTH_REQUIRED') {
                 showAuthPrompt();
             } else {
+                Logger.error('[CRIXEN] Generation failed. Response:', res);
                 showToast('Generation failed: ' + (res?.error || 'Unknown error'), 'error');
             }
         } catch (e) {
@@ -194,22 +196,21 @@
         }
     }
 
-    // ✅ COMPLETELY REWRITTEN: Notion content insertion
+    // ✅ CLIPBOARD VERSION: Bypasses Notion's DOMLock by using native paste
     async function insertContentIntoNotion(markdownContent, clearPage = false) {
-        Logger.info('[CRIXEN] Inserting content into Notion...', { clearPage });
+        Logger.info('[CRIXEN] Inserting content into Notion via clipboard...', {
+            clearPage,
+            contentLength: markdownContent?.length
+        });
 
-        // Method 1: Try to find the main content editable area
-        let target = document.querySelector('.notion-page-content [contenteditable="true"]');
-
-        // Method 2: Try the placeholder area
-        if (!target) {
-            target = document.querySelector('[data-content-editable-leaf="true"]');
+        if (!markdownContent || markdownContent.trim().length === 0) {
+            Logger.error('[CRIXEN] No content to insert!');
+            return false;
         }
 
-        // Method 3: Try any contenteditable in the main area
-        if (!target) {
-            target = document.querySelector('.notion-page-block-children [contenteditable="true"]');
-        }
+        // ✅ Find editable area
+        let target = document.querySelector('[data-content-editable-leaf="true"]') ||
+            document.querySelector('.notion-page-content [contenteditable="true"]');
 
         if (!target) {
             Logger.error('[CRIXEN] No editable area found');
@@ -218,64 +219,200 @@
 
         Logger.info('[CRIXEN] Found target:', target);
 
-        // Focus and wait
+        // Focus properly
         target.click();
+        await sleep(200);
         target.focus();
         await sleep(300);
 
-        // ✅ Clear page if requested (Robustness)
+        // ✅ Clear page if requested
         if (clearPage) {
-            Logger.info('[CRIXEN] Clearing page content...');
-            // Select All
-            document.execCommand('selectAll', false, null);
-            await sleep(100);
-            // Delete
-            document.execCommand('delete', false, null);
-            await sleep(300);
+            const currentText = target.textContent?.trim();
+            if (currentText && currentText.length > 0) {
+                Logger.info('[CRIXEN] Clearing page...');
 
-            // Ensure we are back in focus or have a clean block
-            const newTarget = document.querySelector('.notion-page-content [contenteditable="true"]') || target;
-            newTarget.focus();
-            await sleep(200);
-        }
+                // Use Ctrl+A then Backspace (Notion handles this)
+                const isMac = navigator.platform.includes('Mac');
 
-        // ✅ Convert MD to HTML for Rich Paste
-        // Notion handles HTML paste much better than raw MD text insertion
-        const htmlContent = simpleMarkdownToHtml(markdownContent);
-        Logger.info('[CRIXEN] Converted MD to HTML length:', htmlContent.length);
+                // Select All
+                document.execCommand('selectAll', false, null);
+                await sleep(200);
 
-        // ✅ Dispatch Paste Event (Best for Formatting)
-        let success = false;
-        try {
-            const pasteEvent = new ClipboardEvent('paste', {
-                bubbles: true,
-                cancelable: true,
-                clipboardData: new DataTransfer()
-            });
+                // Delete
+                document.execCommand('delete', false, null);
+                await sleep(500);
 
-            // Set both text/plain (fallback) and text/html (rich)
-            pasteEvent.clipboardData.setData('text/plain', markdownContent);
-            pasteEvent.clipboardData.setData('text/html', htmlContent);
+                // Re-find target
+                target = document.querySelector('[data-content-editable-leaf="true"]') ||
+                    document.querySelector('.notion-page-content [contenteditable="true"]');
 
-            target.dispatchEvent(pasteEvent);
-            Logger.info('[CRIXEN] Paste event dispatched with HTML');
+                if (!target) {
+                    // Click page to create new block
+                    const pageContent = document.querySelector('.notion-page-content');
+                    if (pageContent) {
+                        pageContent.click();
+                        await sleep(500);
+                        target = document.querySelector('[data-content-editable-leaf="true"]');
+                    }
+                }
 
-            await sleep(500);
-            success = true;
-        } catch (e) {
-            Logger.error('[CRIXEN] Paste failed:', e);
-
-            // Fallback to text insertion if paste fails
-            try {
-                success = document.execCommand('insertText', false, markdownContent);
-            } catch (e2) {
-                Logger.error('[CRIXEN] Fallback insertText failed:', e2);
-                success = false;
+                if (target) {
+                    target.click();
+                    target.focus();
+                    await sleep(300);
+                }
+            } else {
+                Logger.info('[CRIXEN] Page is already empty, skipping clear');
             }
         }
 
-        return success;
+        if (!target) {
+            Logger.error('[CRIXEN] No target available for insertion');
+            return false;
+        }
+
+        // ✅ INSERT VIA CLIPBOARD PASTE (bypasses DOMLock)
+        try {
+            Logger.info('[CRIXEN] Converting markdown to HTML and copying to clipboard...');
+
+            // Convert markdown to HTML so Notion formats it properly
+            const htmlContent = simpleMarkdownToHtml(markdownContent);
+            Logger.info('[CRIXEN] HTML content length:', htmlContent.length);
+
+            // Write both HTML and plain text to clipboard
+            // Notion prefers HTML and will format it as blocks
+            const blob = new Blob([htmlContent], { type: 'text/html' });
+            const clipboardItem = new ClipboardItem({
+                'text/html': blob,
+                'text/plain': new Blob([markdownContent], { type: 'text/plain' })
+            });
+
+            await navigator.clipboard.write([clipboardItem]);
+            Logger.info('[CRIXEN] Content copied to clipboard (HTML + plain text)');
+
+            // Ensure target is focused
+            target.focus();
+            await sleep(100);
+
+            // Simulate Ctrl+V / Cmd+V paste
+            Logger.info('[CRIXEN] Triggering paste...');
+
+            // Method 1: Use execCommand paste (may not work in all contexts)
+            const pasted = document.execCommand('paste');
+
+            if (!pasted) {
+                // Method 2: Dispatch paste event with clipboard data
+                Logger.info('[CRIXEN] execCommand paste failed, trying ClipboardEvent...');
+
+                const clipboardData = new DataTransfer();
+                clipboardData.setData('text/html', htmlContent);
+                clipboardData.setData('text/plain', markdownContent);
+
+                const pasteEvent = new ClipboardEvent('paste', {
+                    bubbles: true,
+                    cancelable: true,
+                    clipboardData: clipboardData
+                });
+
+                target.dispatchEvent(pasteEvent);
+            }
+
+            await sleep(500);
+
+            // ✅ Verify insertion worked
+            const finalCheck = document.querySelector('[data-content-editable-leaf="true"]');
+            if (finalCheck) {
+                Logger.info('[CRIXEN] Content insertion completed via clipboard');
+                return true;
+            } else {
+                Logger.warn('[CRIXEN] Editor state may be broken after paste');
+                showToast('Content pasted - if empty, try Ctrl+V manually', 'warning');
+                return true;
+            }
+
+        } catch (error) {
+            Logger.error('[CRIXEN] Clipboard insertion failed:', error);
+
+            // ✅ FALLBACK: Show content in a modal for manual copy/paste
+            Logger.info('[CRIXEN] Falling back to manual copy modal...');
+            showCopyModal(markdownContent);
+            return false;
+        }
     }
+
+    // ✅ Fallback modal for manual copy/paste when clipboard API fails
+    function showCopyModal(content) {
+        // Remove existing modal if any
+        const existing = document.getElementById('crixen-copy-modal');
+        if (existing) existing.remove();
+
+        const modal = document.createElement('div');
+        modal.id = 'crixen-copy-modal';
+        modal.style.cssText = `
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: #1e1e1e;
+            border: 1px solid #333;
+            border-radius: 12px;
+            padding: 20px;
+            z-index: 999999;
+            max-width: 600px;
+            max-height: 80vh;
+            overflow: auto;
+            box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
+        `;
+
+        modal.innerHTML = `
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
+                <h3 style="color: #fff; margin: 0; font-size: 16px;">📋 Copy Content Manually</h3>
+                <button id="crixen-close-modal" style="background: #333; border: none; color: #fff; padding: 5px 10px; border-radius: 6px; cursor: pointer;">✕</button>
+            </div>
+            <p style="color: #aaa; font-size: 13px; margin-bottom: 10px;">Clipboard API not available. Click "Copy" below, then paste into Notion with Ctrl+V:</p>
+            <textarea id="crixen-copy-content" readonly style="
+                width: 100%;
+                height: 300px;
+                background: #0d0d0d;
+                color: #ddd;
+                border: 1px solid #333;
+                border-radius: 8px;
+                padding: 12px;
+                font-family: monospace;
+                font-size: 12px;
+                resize: none;
+            ">${content.replace(/</g, '&lt;').replace(/>/g, '&gt;')}</textarea>
+            <div style="display: flex; gap: 10px; margin-top: 15px;">
+                <button id="crixen-copy-btn" style="
+                    flex: 1;
+                    background: linear-gradient(135deg, #6366f1, #8b5cf6);
+                    border: none;
+                    color: #fff;
+                    padding: 12px;
+                    border-radius: 8px;
+                    cursor: pointer;
+                    font-weight: 600;
+                ">📋 Copy to Clipboard</button>
+            </div>
+        `;
+
+        document.body.appendChild(modal);
+
+        // Event handlers
+        document.getElementById('crixen-close-modal').onclick = () => modal.remove();
+        document.getElementById('crixen-copy-btn').onclick = async () => {
+            const textarea = document.getElementById('crixen-copy-content');
+            textarea.select();
+            try {
+                await navigator.clipboard.writeText(content);
+                showToast('Copied! Now paste with Ctrl+V', 'success');
+            } catch (e) {
+                document.execCommand('copy');
+                showToast('Copied! Now paste with Ctrl+V', 'success');
+            }
+        };
+    }
+
 
     // ✅ NEW: Simple Markdown to HTML Converter
     function simpleMarkdownToHtml(markdown) {
@@ -321,19 +458,16 @@
     }
 
     function analyzeContext() {
-        // 1. Table Database
-        const rows = document.querySelectorAll('.notion-table-view .notion-table-row');
-        if (rows.length > 0) return { type: 'table' };
+        // Updated: Always return 'page' unless it's truly empty,
+        // because we want Capture to run anywhere.
 
-        // 2. Empty Page
         const pageContent = document.querySelector('.notion-page-content');
         if (pageContent) {
             const blocks = pageContent.querySelectorAll('[data-block-id]');
             if (blocks.length < 3) return { type: 'empty' };
-            return { type: 'page' };
         }
 
-        return { type: 'none' };
+        return { type: 'page' }; // Default to page for everything
     }
 
     // ✅ REDESIGNED: Minimal buttons (Native Feel) with SVG Icons
@@ -424,17 +558,152 @@
 
     // --- Shared Logic ---
 
-    function scrapeStrategies() {
-        const rows = document.querySelectorAll('.notion-table-view .notion-table-row');
+    async function scrapeStrategies() {
+        Logger.info('[CRIXEN] Starting strategy scrape via Clipboard...');
+
+        let clipboardText = '';
+
+        // 1. Check for User Selection first
+        const selection = window.getSelection();
+        let hasSelection = selection.toString().trim().length > 0;
+        let isAutoSelection = false;
+
+        if (!hasSelection) {
+            // 2. Select All Content on Page
+            Logger.info('[CRIXEN] No selection, selecting page content...');
+            // Try to find the main content area, fallback to body
+            const pageContent = document.querySelector('.notion-page-content') || document.body;
+
+            const range = document.createRange();
+            range.selectNodeContents(pageContent);
+            selection.removeAllRanges();
+            selection.addRange(range);
+            hasSelection = true;
+            isAutoSelection = true; // Flag that we auto-selected
+            await sleep(100);
+        }
+
+        // 3. Copy via Clipboard API or execCommand
+        try {
+            Logger.info('[CRIXEN] Copying content...');
+            const success = document.execCommand('copy');
+            if (!success) throw new Error('execCommand copy failed');
+
+            // 4. Read from clipboard by pasting into a hidden textarea
+            // Direct navigator.clipboard.readText() often requires permission that content scripts don't have automatically
+            Logger.info('[CRIXEN] Reading clipboard via paste hack...');
+
+            const ta = document.createElement('textarea');
+            ta.style.position = 'fixed';
+            ta.style.left = '-9999px';
+            document.body.appendChild(ta);
+            ta.focus();
+
+            const pasteSuccess = document.execCommand('paste');
+            if (pasteSuccess && ta.value) {
+                clipboardText = ta.value;
+            } else {
+                Logger.info('[CRIXEN] Paste failed, trying navigator.clipboard.readText()...');
+                clipboardText = await navigator.clipboard.readText();
+            }
+            document.body.removeChild(ta);
+
+        } catch (e) {
+            Logger.warn('[CRIXEN] Clipboard copy failed, falling back to DOM parsing', e);
+            selection.removeAllRanges();
+
+            // --- Fallback: DOM Scraping (for Popup trigger where clipboard is blocked) ---
+            Logger.info('[CRIXEN] Falling back to DOM parsing...');
+
+            // Try to find table rows manually
+            // .notion-table-view .notion-table-row is standard for database tables
+            // [role="row"] covers more cases
+            const rows = document.querySelectorAll('.notion-table-view .notion-table-row, [role="row"]');
+
+            if (rows.length > 0) {
+                const domStrategies = [];
+                rows.forEach((row, i) => {
+                    // Get all text cells
+                    // Notion cells usually have data-content-editable-leaf or are inside notion-table-cell-text
+                    const cells = Array.from(row.querySelectorAll('[data-content-editable-leaf="true"], .notion-table-cell-text'))
+                        .map(c => c.innerText.trim())
+                        .filter(t => t.length > 0);
+
+                    if (cells.length >= 2) {
+                        const name = cells[0];
+                        // Find longest remaining cell
+                        const remaining = cells.slice(1);
+                        const prompt = remaining.sort((a, b) => b.length - a.length)[0];
+
+                        if (name && prompt) {
+                            domStrategies.push({ name, prompt });
+                        }
+                    } else if (cells.length === 1) {
+                        // Single column? Treat as Prompt + Auto-Name
+                        const name = 'st' + (i + 1).toString().padStart(2, '0');
+                        const prompt = cells[0];
+                        domStrategies.push({ name, prompt });
+                    }
+                });
+                Logger.info(`[CRIXEN] DOM Fallback extracted ${domStrategies.length} strategies`);
+                return domStrategies;
+            }
+
+            return [];
+        }
+
+        // Clear selection only if we auto-selected? 
+        // For now, let's clear it to be clean.
+        selection.removeAllRanges();
+
+        if (!clipboardText) {
+            Logger.warn('[CRIXEN] Clipboard was empty');
+            return [];
+        }
+
+        Logger.info(`[CRIXEN] Got ${clipboardText.length} chars from clipboard`);
+
+        // 5. Parse content 
         const strategies = [];
-        rows.forEach(row => {
-            const cells = row.querySelectorAll('[data-content-editable-leaf="true"]');
-            if (cells.length >= 2) {
-                const name = cells[0].innerText.trim();
-                const prompt = cells[1].innerText.trim();
-                if (name && prompt) strategies.push({ name, prompt });
+
+        // Special Case: Auto-Selection of non-tabular content = Single Strategy
+        // (User wants "Page Capture" essentially)
+        const isTabular = clipboardText.includes('\t');
+
+        if (isAutoSelection && !isTabular) {
+            Logger.info('[CRIXEN] Auto-selection detected as non-tabular. Capturing as single page strategy.');
+            strategies.push({
+                name: 'Page Content',
+                prompt: clipboardText.trim()
+            });
+            return strategies;
+        }
+
+        const lines = clipboardText.split('\n');
+
+        lines.forEach((line, i) => {
+            // Split by tabs (usual for Notion table copy)
+            const cols = line.split('\t').map(c => c.trim()).filter(c => c);
+
+            if (cols.length >= 2) {
+                // Heuristic: Col 1 is Name, Longest other column is Strategy
+                const name = cols[0];
+                const rest = cols.slice(1);
+                // Find longest text in remaining columns (likely the prompt)
+                const prompt = rest.sort((a, b) => b.length - a.length)[0];
+
+                if (name && prompt && name.length < 100) { // Safety check
+                    strategies.push({ name, prompt });
+                }
+            } else if (cols.length === 1) {
+                // Single column? Treat as Prompt + Auto-Name
+                const name = 'st' + (i + 1).toString().padStart(2, '0');
+                const prompt = cols[0];
+                strategies.push({ name, prompt });
             }
         });
+
+        Logger.info(`[CRIXEN] Extracted ${strategies.length} strategies from clipboard`);
         return strategies;
     }
 
@@ -598,9 +867,14 @@ ${Object.entries(stats.byStyle || {}).map(([style, count]) => `  ${style}: ${cou
     }
 
     // Message Listener
+    // Message Listener
     chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
         if (request.action === 'scrapeNotionStrategies') {
-            sendResponse({ success: true, strategies: scrapeStrategies() });
+            // Must return true to keep message channel open for async response
+            scrapeStrategies().then(strategies => {
+                sendResponse({ success: true, strategies: strategies });
+            });
+            return true;
         } else if (request.action === 'pushNotionReport') {
             pushReport(request.stats).then(result => sendResponse(result));
             return true;
@@ -855,4 +1129,5 @@ ${Object.entries(stats.byStyle || {}).map(([style, count]) => `  ${style}: ${cou
         });
     }
 
-})();
+})();// Crixen - Notion Integration (Native UI Injection)
+
