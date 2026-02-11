@@ -45,7 +45,7 @@
             }
 
             // 3. Highlight
-            target.style.borderLeft = '4px solid #1d9bf0';
+            // target.style.borderLeft = '4px solid #1d9bf0';
             target.scrollIntoView({ behavior: 'smooth', block: 'center' });
             await utils.sleep(1000);
 

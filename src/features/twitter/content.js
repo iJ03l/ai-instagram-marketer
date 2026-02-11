@@ -95,8 +95,8 @@
             align-items: center;
             gap: 8px;
         `;
-        btn.onmouseover = () => btn.style.transform = 'scale(1.05)';
-        btn.onmouseout = () => btn.style.transform = 'scale(1)';
+        // btn.onmouseover = () => btn.style.transform = 'scale(1.05)';
+        // btn.onmouseout = () => btn.style.transform = 'scale(1)';
         return btn;
     }
 

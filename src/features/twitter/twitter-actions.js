@@ -369,7 +369,7 @@
                     Logger.debug('[Twitter] Found input with selector:', selector);
 
                     // Focus and verify it's ready
-                    input.focus();
+                    // input.focus(); // Removed to prevent focus stealing
                     await utils.sleep(100);
 
                     // Check if it's actually editable

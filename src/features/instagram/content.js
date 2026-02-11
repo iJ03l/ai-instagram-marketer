@@ -49,7 +49,8 @@
     }
 
     function injectButtons() {
-        const posts = document.querySelectorAll('article');
+        // Target articles (feed), main (Reels viewer), and dialogs (Reels modal)
+        const posts = document.querySelectorAll('article, main, div[role="dialog"]');
         posts.forEach((post) => {
             if (post.dataset.aiCommentInjected && post.querySelector('.ai-comment-btn-glass')) return;
 
@@ -64,7 +65,19 @@
                 const container = document.createElement('div');
                 container.style.display = 'flex';
                 container.style.alignItems = 'center';
-                container.style.marginLeft = '8px';
+
+                // Check if we are in a vertical stack (Reels)
+                const isVertical = actionBar.offsetHeight > actionBar.offsetWidth * 2; // rough heuristic
+                if (isVertical) {
+                    container.style.marginTop = '12px';
+                    container.style.flexDirection = 'column';
+                    // Make button smaller/circular for Reels if needed, or just standard
+                    // For now, keep standard but ensure it doesn't break layout
+                    btn.classList.add('reels-mode');
+                } else {
+                    container.style.marginLeft = '8px';
+                }
+
                 container.appendChild(btn);
 
                 actionBar.appendChild(container);

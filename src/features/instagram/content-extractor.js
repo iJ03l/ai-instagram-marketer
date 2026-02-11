@@ -14,7 +14,16 @@
         const usernameEl = post.querySelector('header h2') ||
             post.querySelector('header a') ||
             post.querySelector('a[href^="/"][role="link"] span') ||
-            post.querySelector('div > span > a > span');
+            post.querySelector('div > span > a > span') ||
+            // Fallback for Reels: Find the first link that looks like a username
+            Array.from(post.querySelectorAll('a')).find(a =>
+                a.href.includes('/') &&
+                a.innerText.length > 2 &&
+                !a.href.includes('/explore/') &&
+                // Allow /reels/ only if it follows a username (e.g. /user/reels/)
+                (!a.href.includes('/reels/') || a.href.match(/\/[^\/]+\/reels\/?$/)) &&
+                !a.innerText.includes('Follow')
+            );
 
         if (usernameEl) {
             const username = usernameEl.textContent?.trim();
@@ -29,12 +38,39 @@
         if (h1) {
             caption = h1.textContent;
         }
+
+        // Fallback: Check the first <li> in the comment section (common structure)
         if (!caption || caption.length < 5) {
-            const captionContainer = post.querySelector('div > ul > li > div > div > div > span');
-            if (captionContainer) {
-                caption = captionContainer.textContent;
+            const possibleCaption = post.querySelector('div > ul > li > div > div > div > span') ||
+                post.querySelector('ul li span._aacl') ||
+                post.querySelector('ul > li:first-child span') ||
+                // Reels specific: div[dir="auto"] often holds the caption
+                post.querySelector('div[dir="auto"] > span') ||
+                // Another common Reels caption container pattern
+                post.querySelector('.x1g9anri span');
+
+            if (possibleCaption) {
+                caption = possibleCaption.textContent;
             }
         }
+
+        // Fallback 2: Look for text content near the username
+        if (!caption && parts.length > 0) {
+            const authorLine = parts[0]; // "Author: @username"
+            const username = authorLine.split('@')[1];
+            if (username) {
+                // Find all spans having text
+                const spans = post.querySelectorAll('span');
+                for (const span of spans) {
+                    // If span is long enough and seemingly near the top, might be caption
+                    // This is "best effort"
+                    if (span.textContent.length > 20 && !span.textContent.includes(username)) {
+                        // potential caption
+                    }
+                }
+            }
+        }
+
         if (caption) {
             const cleaned = caption.replace(/Verified/g, '').trim();
             if (cleaned.length > 0) parts.push(`Caption: "${cleaned.substring(0, 800)}"`);
@@ -66,8 +102,13 @@
             }
         });
 
-        if (imageDescriptions.length > 0) {
-            parts.push(`Image Alt Text: ${imageDescriptions.join('. ')}`);
+        // if (imageDescriptions.length > 0) {
+        //     parts.push(`Image Alt Text: ${imageDescriptions.join('. ')}`);
+        // }
+
+        if (parts.length === 0) {
+            console.warn('AI Comment: No caption or image alt text found.');
+            return null;
         }
 
         const textContent = parts.join('\n');
@@ -75,7 +116,7 @@
         console.log('AI Comment Image URLs:', imageUrls);
 
         return {
-            text: textContent || 'Instagram post',
+            text: textContent,
             images: imageUrls.slice(0, 2) // Max 2 images for API
         };
     };

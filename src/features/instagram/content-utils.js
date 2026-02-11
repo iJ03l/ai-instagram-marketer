@@ -157,11 +157,25 @@
     window.InstagramAssistant.waitForStrictInput = function (timeout = 3000) {
         return new Promise((resolve) => {
             const check = () => {
-                const dialogInputs = document.querySelectorAll('div[role="dialog"] textarea, div[role="dialog"] [contenteditable="true"][role="textbox"]');
+                // 1. Check Active Element first (users suggestion: "just ctrl+v")
+                if (document.activeElement) {
+                    const el = document.activeElement;
+                    const tagName = el.tagName.toLowerCase();
+                    if (tagName === 'textarea' ||
+                        el.getAttribute('contenteditable') === 'true' ||
+                        el.contentEditable === 'true') {
+                        return el;
+                    }
+                }
+
+                // 2. Search in Dialogs (Broadened selector)
+                const dialogInputs = document.querySelectorAll('div[role="dialog"] textarea, div[role="dialog"] [contenteditable="true"]');
                 for (const el of dialogInputs) {
                     if (window.InstagramAssistant.isElementVisible(el)) return el;
                 }
-                const allInputs = document.querySelectorAll('textarea, [contenteditable="true"][role="textbox"]');
+
+                // 3. Search Globally
+                const allInputs = document.querySelectorAll('textarea, [contenteditable="true"]');
                 for (const el of allInputs) {
                     if (window.InstagramAssistant.isElementVisible(el)) return el;
                 }
@@ -215,8 +229,30 @@
     window.InstagramAssistant.findActionBar = function (post) {
         const svgs = post.querySelectorAll('svg');
         for (const svg of svgs) {
-            if (svg.getAttribute('aria-label') === 'Like' || svg.getAttribute('aria-label') === 'Comment') {
-                return svg.closest('section') || svg.closest('div[role="button"]')?.parentElement?.parentElement;
+            const label = svg.getAttribute('aria-label');
+            if (label === 'Like' || label === 'Comment' || label === 'Share') {
+                // For Reels, the buttons are often in a vertical stack:
+                // svg -> div -> div[role="button"] -> div (wrapper) -> div (stack item) -> div (stack container)
+                // We want to find the container to append to.
+
+                // 1. Find the clickable element
+                const btn = svg.closest('[role="button"]') || svg.closest('button');
+                if (btn) {
+                    // 2. Go up to find the common container.
+                    // In Reels, btn.parentElement is a wrapper, and btn.parentElement.parentElement is the stack.
+                    // Let's try to find the parent that contains other action buttons.
+                    let parent = btn.parentElement;
+                    for (let i = 0; i < 4; i++) {
+                        if (parent) {
+                            if (parent.querySelectorAll('svg[aria-label="Like"], svg[aria-label="Comment"]').length > 1) {
+                                return parent;
+                            }
+                            parent = parent.parentElement;
+                        }
+                    }
+                    // Fallback: just return the grandparent of the button
+                    return btn.parentElement?.parentElement;
+                }
             }
         }
         return post.querySelector('section._aamu') || post.querySelector('div.x1bedvcd');

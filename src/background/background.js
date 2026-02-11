@@ -50,7 +50,7 @@ const PLATFORM_CONTEXT = {
                     'If the input is a question, use it as a prompt for a post, do NOT answer it directly like a chatbot.',
                     'First line is everything - make them stop scrolling',
                     'One big idea per post',
-                    'End with a hook, question, or call to engage',
+                    'End with a hook, or call to engage',
                     'Be opinionated, not neutral'
                 ]
             }
@@ -58,12 +58,12 @@ const PLATFORM_CONTEXT = {
     },
     instagram: {
         name: 'Instagram',
-        culture: 'Visual-first, aspirational, community-driven. Comments build real relationships. Authenticity wins.',
+        culture: 'Aspirational, community-driven. Comments build real relationships. Authenticity wins.',
         actionTypes: {
             comment: {
                 goal: 'Build genuine connection. Comments here matter for relationships.',
                 rules: [
-                    'Reference the VISUAL content specifically (colors, composition, vibe)',
+                    'Never respond ou of context of the caption',
                     'Be conversational and warm - this is a community',
                     'Emojis are expected and add personality',
                     'Ask questions to spark conversation',
@@ -621,7 +621,11 @@ const BANNED_PHRASES = [
     'Really needed to hear this',
     'This hit different',
     'As someone who',
-    'I absolutely love'
+    'I absolutely love',
+    'Awesome',
+    'Nice one',
+    'Good stuff',
+    'Keep it up'
 ];
 
 /**
@@ -664,15 +668,17 @@ You are their voice on ${platformCtx?.name || 'social media'}.
 Never write like an assistant or helper. Never say "I'll help you" or "Here's a response."
 Just BE them and write the ${actionType}.`;
 
-    // Add brand voice if exists (this is the user's core persona)
+    // Add brand voice instructions (PRIORITY #1)
     if (brandVoice) {
         prompt += `
 
-## YOUR BRAND VOICE (PRIORITIZE THIS)
+## YOUR BRAND VOICE (CRITICAL - DO NOT DEVIATE)
 
 ${brandVoice}
 
-This is WHO you are. Every word must align with this voice.`;
+This is WHO you are. Every word must align with this voice.
+If the brand voice is "snarky", be snarky. If it's "professional", be professional.
+DEFAULT TO THIS VOICE OVER EVERYTHING ELSE.`;
     }
 
     // Add style layer
@@ -707,7 +713,9 @@ ${actionCtx.rules.map((rule, i) => `${i + 1}. ${rule}`).join('\n')}`;
 
 # STRICT QUALITY RULES (NON-NEGOTIABLE)
 
-1. **Specific NOT Generic**: Reference SPECIFIC details from the content. Never be vague.
+1. **Specific NOT Generic**: Reference SPECIFIC details from the caption or text.
+   - If you cannot find something specific to comment on, DO NOT GENERATE A COMMENT.
+   - NEVER say "Great post" or "Nice pic".
 
 2. **Banned Phrases** - NEVER use these (instant red flags):
 ${BANNED_PHRASES.map(p => `   - "${p}"`).join('\n')}
@@ -715,7 +723,8 @@ ${BANNED_PHRASES.map(p => `   - "${p}"`).join('\n')}
 3. **Formatting**:
    - Use DOUBLE LINE BREAKS between sentences/thoughts for visual spacing
    - NO em dashes (—), en dashes (–), or double hyphens (--)
-   - Maximum 3 emojis, only if natural for your persona
+   - Maximum 1 emojis, only if natural for your persona. NO emoji spam.
+   - **KEEP IT SHORT**: The best comments are punchy. 1-2 sentences max unless the post demands a deep response.
 
 4. **Authenticity**: Write like a real person with opinions, not a sycophantic bot.
 
@@ -775,7 +784,7 @@ function postProcessContent(content, platform) {
  * @param {string} platform - 'twitter' | 'instagram' (default: 'instagram')
  * @param {string} actionType - 'reply' | 'quote' | 'comment' (default: based on platform)
  */
-async function generateComment(postContent, style, customPrompt = '', imageUrls = [], platform = 'instagram', actionType = null) {
+async function generateComment(postContent, style, customPrompt = '', _ignoredImages = [], platform = 'instagram', actionType = null) {
     const settings = await getSettings();
 
     // Validate model

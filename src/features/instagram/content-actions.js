@@ -86,9 +86,25 @@
         const input = await utils.waitForStrictInput(5000);
 
         if (!input) {
-            utils.showToast('Input not found (Strict Mode)', 'error');
-            state.isProcessing = false;
-            return;
+            // Fallback: Check active element one last time
+            const active = document.activeElement;
+            if (active && (active.tagName === 'TEXTAREA' || active.contentEditable === 'true')) {
+                console.warn('AI Comment: Strict search failed, using active element');
+                // Use the active element
+                input = active;
+            } else {
+                utils.showToast('Input not found. Click the box manually?', 'warning');
+                // Don't abort immediately, give user a second to click
+                await utils.sleep(2000);
+                const retryParams = await utils.waitForStrictInput(1000);
+                if (retryParams) {
+                    input = retryParams;
+                } else {
+                    utils.showToast('Input not found', 'error');
+                    state.isProcessing = false;
+                    return;
+                }
+            }
         }
 
         input.scrollIntoView({ behavior: 'smooth', block: 'center' });
@@ -188,6 +204,13 @@
         utils.showToast('🤖 Analyzing post & generating...', 'info');
 
         const postData = utils.extractPostContent(post);
+
+        if (!postData) {
+            console.warn('AI Comment: No context found (caption/alt). Cannot generate specific comment.');
+            utils.showToast('⚠️ No context (caption/alt) found. Cannot generate.', 'error');
+            state.isProcessing = false;
+            return;
+        }
 
         if (!postData.text || postData.text.length < 10) {
             console.warn('AI Comment: Content extraction unreliable', postData);
