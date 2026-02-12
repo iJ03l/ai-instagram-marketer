@@ -1,496 +1,335 @@
-// Crixen - Twitter Actions
+// Crixen - Twitter Actions (With Thread/Longform Fix)
 
-(function () {
+(() => {
     'use strict';
 
     window.CrixenTwitter = window.CrixenTwitter || {};
     const utils = window.CrixenTwitter;
     const state = window.CrixenTwitter.state;
-    // Connect to global logger; fallback to console if missing
     const Logger = window.CrixenLogger || console;
 
-    // --- TYPING ---
-    // Enhanced typing simulation for Twitter's Draft.js editors
-    window.CrixenTwitter.simulateTyping = async function (element, text) {
+    // ---------- typing ----------
+    utils.simulateTyping = async function (element, text) {
         element.focus();
-        await utils.sleep(100);
+        await utils.sleep(80);
 
-        // Method 1: Try execCommand (works on most Twitter inputs)
         try {
             document.execCommand('selectAll', false, null);
-            const success = document.execCommand('insertText', false, text);
-
-            if (success) {
+            const ok = document.execCommand('insertText', false, text);
+            if (ok) {
                 element.dispatchEvent(new Event('input', { bubbles: true }));
                 element.dispatchEvent(new Event('change', { bubbles: true }));
-                await utils.sleep(100);
                 return true;
             }
-        } catch (e) {
-            Logger.warn('[Twitter] execCommand failed, trying fallback');
-        }
+        } catch { }
 
-        // Method 2: Draft.js-specific (for newer Twitter)
         try {
-            // Get Draft.js editor state
-            const draftEditor = element.closest('.DraftEditor-root');
-            if (draftEditor) {
-                // Set inner text (Draft.js picks it up)
-                element.innerText = text;
+            element.innerText = text;
+            element.dispatchEvent(new InputEvent('beforeinput', { bubbles: true, cancelable: true, inputType: 'insertText', data: text }));
+            element.dispatchEvent(new InputEvent('input', { bubbles: true, inputType: 'insertText', data: text }));
+            return true;
+        } catch { }
 
-                // Trigger Draft.js events
-                element.dispatchEvent(new InputEvent('beforeinput', {
-                    bubbles: true,
-                    cancelable: true,
-                    inputType: 'insertText',
-                    data: text
-                }));
-
-                element.dispatchEvent(new InputEvent('input', {
-                    bubbles: true,
-                    inputType: 'insertText',
-                    data: text
-                }));
-
-                await utils.sleep(100);
-                return true;
-            }
-        } catch (e) {
-            Logger.warn('[Twitter] Draft.js method failed');
-        }
-
-        // Method 3: Clipboard paste (most reliable fallback)
-        try {
-            const dataTransfer = new DataTransfer();
-            dataTransfer.setData('text/plain', text);
-
-            const pasteEvent = new ClipboardEvent('paste', {
-                bubbles: true,
-                cancelable: true,
-                clipboardData: dataTransfer
-            });
-
-            element.dispatchEvent(pasteEvent);
-            await utils.sleep(100);
-
-            // Verify it worked
-            if (element.textContent.includes(text) || element.innerText.includes(text)) {
-                return true;
-            }
-        } catch (e) {
-            Logger.warn('[Twitter] Clipboard method failed');
-        }
-
-        // Method 4: Direct manipulation (last resort)
         element.textContent = text;
-        element.innerText = text;
         element.dispatchEvent(new Event('input', { bubbles: true }));
         element.dispatchEvent(new Event('change', { bubbles: true }));
-
-        await utils.sleep(100);
         return true;
     };
 
-    // --- ACTIONS ---
+    // ---------- composer helpers ----------
 
-    window.CrixenTwitter.handleReply = async function (tweet) {
+    async function waitForTwitterComposerRoot(timeoutMs = 6000) {
+        const start = Date.now();
+        while (Date.now() - start < timeoutMs) {
+            const dialog = document.querySelector('[role="dialog"]');
+            if (dialog) return dialog;
+            await utils.sleep(120);
+        }
+        return null;
+    }
+
+    async function waitForTwitterInput(timeoutMs = 6000) {
+        const selectors = [
+            '[data-testid="tweetTextarea_0"]',
+            '[data-testid="tweetTextarea_1"]',
+            '[contenteditable="true"][role="textbox"]',
+            '.DraftEditor-editorContainer [contenteditable="true"]'
+        ];
+
+        const start = Date.now();
+        while (Date.now() - start < timeoutMs) {
+            for (const sel of selectors) {
+                const el = document.querySelector(sel);
+                if (el && utils.isElementVisible(el) && (el.isContentEditable || el.getAttribute('contenteditable') === 'true')) {
+                    return el;
+                }
+            }
+            await utils.sleep(150);
+        }
+        return null;
+    }
+
+    async function clickTwitterPostButton() {
+        await utils.sleep(250);
+
+        const selectors = [
+            '[data-testid="tweetButtonInline"]',
+            '[data-testid="tweetButton"]'
+        ];
+
+        for (const sel of selectors) {
+            const btn = document.querySelector(sel);
+            if (btn && utils.isElementVisible(btn) && btn.getAttribute('aria-disabled') !== 'true') {
+                btn.click();
+                return true;
+            }
+        }
+
+        const btns = Array.from(document.querySelectorAll('div[role="button"],button'));
+        const found = btns.find((b) => {
+            const t = (b.textContent || '').trim().toLowerCase();
+            return (t === 'post' || t === 'reply' || t === 'tweet') && utils.isElementVisible(b) && b.getAttribute('aria-disabled') !== 'true';
+        });
+
+        if (found) {
+            found.click();
+            return true;
+        }
+
+        return false;
+    }
+
+    async function clickAddTweetToThread() {
+        await utils.sleep(250);
+
+        const candidates = [
+            document.querySelector('[data-testid="addTweetButton"]'),
+            document.querySelector('[aria-label*="Add another post"]'),
+            document.querySelector('[aria-label*="Add another Tweet"]'),
+            document.querySelector('div[role="button"][aria-label*="Add"]')
+        ].filter(Boolean);
+
+        const btn = candidates.find((b) => utils.isElementVisible(b));
+        if (btn) {
+            btn.click();
+            return true;
+        }
+        return false;
+    }
+
+    // ---------- actions ----------
+
+    utils.handleReply = async function (tweet) {
         if (state.isProcessing) {
-            utils.showToast('⏳ Still processing previous action...', 'warning');
-            return;
+            utils.showToast('Still processing...', 'warning');
+            return false;
         }
 
         state.isProcessing = true;
         state.currentTweet = tweet;
 
-        utils.showToast('🐦 Analyzing Tweet...', 'info');
-
         try {
-            // 1. Extract
+            utils.showToast('Analyzing tweet...', 'info');
+
             const data = utils.extractTweetContent(tweet);
-            Logger.info('[Twitter] Extracted tweet data:', data);
 
-            // 2. Click Reply
             const replyBtn = tweet.querySelector('[data-testid="reply"]');
-            if (!replyBtn) {
-                throw new Error('Reply button not found on this tweet');
-            }
-
+            if (!replyBtn) throw new Error('Reply button not found');
             replyBtn.click();
-            utils.showToast('📝 Opening reply...', 'info');
 
-            // 3. Wait for Modal & Input
-            const input = await waitForTwitterInput();
-            if (!input) {
-                throw new Error('Reply composer did not open. Try clicking reply manually first.');
-            }
+            utils.showToast('Opening reply...', 'info');
+            const input = await waitForTwitterInput(7000);
+            if (!input) throw new Error('Reply composer did not open');
 
-            Logger.info('[Twitter] Input ready:', input);
-
-            // 4. Generate
             await utils.loadSettings();
             const style = state.settings?.defaultStyle || 'witty';
 
-            utils.showToast('🤖 Generating reply...', 'info');
+            utils.showToast('Generating reply...', 'info');
 
             const response = await chrome.runtime.sendMessage({
                 action: 'generateComment',
                 postContent: data.text,
                 imageUrls: data.images,
-                style: style,
-                customPrompt: "Twitter reply: Keep under 280 chars. Be concise and impactful. " + (state.settings?.customPrompt || ''),
+                style,
+                customPrompt:
+                    'X reply: under 280 chars. One sharp point. No unrelated questions. No generic praise. ' +
+                    (state.settings?.customPrompt || ''),
                 platform: 'twitter',
                 actionType: 'reply'
             });
 
-            if (!response || !response.success) {
-                if (response?.error === 'AUTH_REQUIRED') {
-                    throw new Error('AUTH_REQUIRED');
-                }
-                throw new Error(response?.error || 'AI generation failed');
+            if (!response?.success) {
+                if (response?.code === 'AUTH_REQUIRED' || response?.error === 'AUTH_REQUIRED') throw new Error('AUTH_REQUIRED');
+                throw new Error(response?.error || 'Generation failed');
             }
 
-            Logger.info('[Twitter] Generated reply:', response.comment);
-
-            // 5. Type
-            utils.showToast('✍️ Typing reply...', 'info');
             const typed = await utils.simulateTyping(input, response.comment);
+            if (!typed) throw new Error('Failed to type');
 
-            if (!typed) {
-                throw new Error('Failed to insert text into composer');
-            }
-
-            // Verify text was inserted
-            await utils.sleep(500);
-
-            // Normalize whitespace for comparison (ignore newlines/spacing differences)
-            const getNormalizedText = (str) => (str || '').replace(/\s+/g, ' ').trim();
-
-            const currentText = getNormalizedText(input.textContent || input.innerText);
-            const expectedStart = getNormalizedText(response.comment).substring(0, 20);
-
-            if (!currentText.includes(expectedStart)) {
-                Logger.warn('[Twitter] Text insertion verification failed');
-                Logger.warn('Expected start:', expectedStart);
-                Logger.warn('Actual content:', currentText);
-                utils.showToast('⚠️ Text check failed. Verify content.', 'warning');
-            }
-
-            // 6. Post (Click Reply)
-            utils.showToast('📤 Posting reply...', 'info');
+            utils.showToast('Posting...', 'info');
             const posted = await clickTwitterPostButton();
+            if (!posted) throw new Error('Could not click post button');
 
-            if (!posted) {
-                throw new Error('Could not click post button. You may need to click it manually.');
-            }
-
+            utils.showToast('Posted', 'success');
+            return true;
         } catch (e) {
-            Logger.error('[Twitter] Reply error:', e);
-
-            if (e.message.includes('validat') || e.message.includes('Invocation of form') || e.message.includes('context')) {
-                utils.showToast('⚠️ Extension updated: Please REFRESH page!', 'error');
-            } else if (e.message === 'AUTH_REQUIRED') {
-                if (typeof utils.showAuthPrompt === 'function') {
-                    utils.showAuthPrompt();
-                } else {
-                    utils.showToast('🔐 Login required. Open Crixen dashboard.', 'error');
-                }
-            } else {
-                utils.showToast('❌ ' + (e.message || 'Reply failed'), 'error');
-            }
+            Logger.error('[Twitter] Reply error', e);
+            if (e.message === 'AUTH_REQUIRED') utils.showAuthPrompt?.();
+            else utils.showToast(e?.message || 'Reply failed', 'error');
+            return false;
         } finally {
             state.isProcessing = false;
         }
     };
 
-    window.CrixenTwitter.handleQuote = async function (tweet) {
-        if (state.isProcessing) return;
+    utils.handleQuote = async function (tweet) {
+        if (state.isProcessing) return false;
         state.isProcessing = true;
 
-        utils.showToast('🐦 Analyzing for Quote...', 'info');
-
-        const data = utils.extractTweetContent(tweet);
-
-        // 1. Click Retweet
-        const rtBtn = tweet.querySelector('[data-testid="retweet"]');
-        if (!rtBtn) {
-            utils.showToast('Retweet button not found', 'error');
-            state.isProcessing = false;
-            return;
-        }
-        rtBtn.click();
-
-        await utils.sleep(500);
-
-        // 2. Click Quote in menu
-        const quoteMenuItem = document.querySelector('[data-testid="retweetConfirm"]');
-
-        const menuItems = document.querySelectorAll('[role="menuitem"]');
-        let quoteBtn = null;
-        for (const item of menuItems) {
-            if (item.textContent.includes('Quote')) {
-                quoteBtn = item;
-                break;
-            }
-        }
-
-        if (!quoteBtn) {
-            utils.showToast('Quote option not found', 'error');
-            state.isProcessing = false;
-            return;
-        }
-        quoteBtn.click();
-
-        // 3. Wait for Input
-        const input = await waitForTwitterInput();
-        if (!input) {
-            utils.showToast('Quote input not found', 'error');
-            state.isProcessing = false;
-            return;
-        }
-
-        // 4. Generate
-        await utils.loadSettings();
         try {
+            utils.showToast('Preparing quote...', 'info');
+
+            const data = utils.extractTweetContent(tweet);
+
+            const rtBtn = tweet.querySelector('[data-testid="retweet"]');
+            if (!rtBtn) throw new Error('Retweet button not found');
+            rtBtn.click();
+            await utils.sleep(350);
+
+            const menuItems = document.querySelectorAll('[role="menuitem"]');
+            const quoteBtn = Array.from(menuItems).find((i) => (i.textContent || '').includes('Quote'));
+            if (!quoteBtn) throw new Error('Quote option not found');
+            quoteBtn.click();
+
+            const input = await waitForTwitterInput(7000);
+            if (!input) throw new Error('Quote composer not found');
+
+            await utils.loadSettings();
+            const style = state.settings?.defaultStyle || 'witty';
+
             const response = await chrome.runtime.sendMessage({
                 action: 'generateComment',
                 postContent: data.text,
-                style: 'witty',
-                customPrompt: "Generate a quote tweet. Add value or a funny take.",
+                style,
+                customPrompt:
+                    'X quote tweet: add a new angle, insight, or punchline. No generic praise. No unrelated questions. ' +
+                    (state.settings?.customPrompt || ''),
                 platform: 'twitter',
                 actionType: 'quote'
             });
 
-            if (!response || !response.success) throw new Error('Generation failed');
-
-            await utils.simulateTyping(input, response.comment);
-            await clickTwitterPostButton();
-
-        } catch (e) {
-            utils.showToast(e.message, 'error');
-        } finally {
-            state.isProcessing = false;
-        }
-    };
-
-    window.CrixenTwitter.handleCreatePost = async function () {
-        if (state.isProcessing) return;
-        state.isProcessing = true;
-
-        // 1. Prompt for Topic
-        const topic = prompt("What should this post be about? (Topic/Vibe)");
-        if (!topic) {
-            state.isProcessing = false;
-            return;
-        }
-
-        utils.showToast('✨ Generating Post...', 'info');
-
-        // 2. Open Composer
-        // Find the global "Post" button using aria-label or testid
-        const postBtn = document.querySelector('[data-testid="SideNav_NewTweet_Button"]');
-        if (postBtn) {
-            postBtn.click();
-        } else {
-            // Fallback: Keyboard shortcut 'n' if focused on body
-            document.body.dispatchEvent(new KeyboardEvent('keydown', { key: 'n', bubbles: true }));
-        }
-
-        // 3. Wait for Modal Input
-        const input = await waitForTwitterInput();
-        if (!input) {
-            utils.showToast('Composer not found', 'error');
-            state.isProcessing = false;
-            return;
-        }
-
-        // 4. Generate
-        await utils.loadSettings();
-        try {
-            // Check if extension context is still valid before making the call
-            if (!chrome.runtime?.id) {
-                throw new Error('CONTEXT_INVALID');
-            }
-
-            const response = await chrome.runtime.sendMessage({
-                action: 'generatePost',
-                topic: topic,
-                platform: 'twitter'
-            });
-
-            if (chrome.runtime.lastError) {
-                throw new Error('CONTEXT_INVALID');
-            }
-
-            if (!response || !response.success) {
-                if (response?.error === 'AUTH_REQUIRED') throw new Error('AUTH_REQUIRED');
+            if (!response?.success) {
+                if (response?.code === 'AUTH_REQUIRED' || response?.error === 'AUTH_REQUIRED') throw new Error('AUTH_REQUIRED');
                 throw new Error(response?.error || 'Generation failed');
             }
 
-            // 5. Type
-            utils.showToast('✍️ Typing post...', 'info');
             await utils.simulateTyping(input, response.comment);
+            const posted = await clickTwitterPostButton();
+            if (!posted) throw new Error('Could not click post button');
 
-            // 6. Ready to send
-            utils.showToast('✅ Ready to post!', 'success');
-
+            utils.showToast('Posted', 'success');
+            return true;
         } catch (e) {
-            Logger.error('AI Post:', e);
-            if (e.message === 'AUTH_REQUIRED') {
-                if (typeof utils.showAuthPrompt === 'function') {
-                    utils.showAuthPrompt();
-                } else {
-                    utils.showToast('Login required', 'error');
-                }
-            } else if (e.message === 'CONTEXT_INVALID' || e.message.includes('context') || e.message.includes('invalidat')) {
-                utils.showToast('⚠️ Extension updated - Please REFRESH this page!', 'error');
-            } else {
-                utils.showToast(e.message || 'Generation failed', 'error');
-            }
+            Logger.error('[Twitter] Quote error', e);
+            if (e.message === 'AUTH_REQUIRED') utils.showAuthPrompt?.();
+            else utils.showToast(e?.message || 'Quote failed', 'error');
+            return false;
         } finally {
             state.isProcessing = false;
         }
     };
 
-    // --- HELPERS ---
+    // ✅ FIXED: Create post with proper thread/longform handling
+    utils.handleCreatePost = async function () {
+        if (state.isProcessing) return;
+        state.isProcessing = true;
 
-    async function waitForTwitterInput() {
-        const selectors = [
-            '[data-testid="tweetTextarea_0"]',      // Primary composer
-            '[contenteditable="true"][role="textbox"]', // Generic editable
-            '.DraftEditor-editorContainer [contenteditable="true"]', // Draft.js editor
-            '[data-testid="tweetTextarea_1"]',      // Sometimes numbered differently
-        ];
+        try {
+            await utils.loadSettings();
 
-        let attempts = 0;
-        while (attempts < 30) {
-            for (const selector of selectors) {
-                const input = document.querySelector(selector);
-                if (input && utils.isElementVisible(input)) {
-                    Logger.debug('[Twitter] Found input with selector:', selector);
+            const inputResult = await utils.showPostModal?.();
+            if (!inputResult) return false;
 
-                    // Focus and verify it's ready
-                    // input.focus(); // Removed to prevent focus stealing
-                    await utils.sleep(100);
+            const { topic, mode } = inputResult;
+            const actionType = mode === 'thread' ? 'thread' : mode === 'longform' ? 'longform' : 'post';
 
-                    // Check if it's actually editable
-                    const isEditable = input.isContentEditable ||
-                        input.getAttribute('contenteditable') === 'true';
+            utils.showToast('Opening composer...', 'info');
 
-                    if (isEditable) return input;
+            const openBtn = document.querySelector('[data-testid="SideNav_NewTweet_Button"]');
+            if (openBtn) openBtn.click();
+            else document.body.dispatchEvent(new KeyboardEvent('keydown', { key: 'n', bubbles: true }));
+
+            const input = await waitForTwitterInput(7000);
+            if (!input) throw new Error('Composer not found');
+
+            utils.showToast(`Generating ${actionType}...`, 'info');
+
+            const response = await chrome.runtime.sendMessage({
+                action: 'generatePost',
+                topic,
+                platform: 'twitter',
+                actionType
+            });
+
+            if (!response?.success) {
+                if (response?.code === 'AUTH_REQUIRED' || response?.error === 'AUTH_REQUIRED') throw new Error('AUTH_REQUIRED');
+                throw new Error(response?.error || 'Generation failed');
+            }
+
+            const content = String(response.comment || '').trim();
+            if (!content) throw new Error('Empty content');
+
+            if (actionType === 'thread') {
+                // ✅ Split by double newlines (AI outputs tweets separated by \n\n)
+                const tweets = content.split(/\n\n+/g)
+                    .map(t => t.trim())
+                    .filter(t => t.length > 0);
+
+                console.log(`[Thread] Split into ${tweets.length} tweets:`, tweets);
+
+                if (tweets.length < 2) {
+                    throw new Error(`Thread must have at least 2 tweets. Got: ${tweets.length}`);
                 }
-            }
 
-            await utils.sleep(200);
-            attempts++;
-        }
+                // Type first tweet
+                await utils.simulateTyping(input, tweets[0]);
+                await utils.sleep(300);
 
-        Logger.error('[Twitter] Input not found after', attempts, 'attempts');
-        return null;
-    }
+                // Add remaining tweets
+                for (let i = 1; i < tweets.length; i++) {
+                    const added = await clickAddTweetToThread();
+                    if (!added) {
+                        utils.showToast(`Added ${i} of ${tweets.length} tweets. Add rest manually.`, 'warning');
+                        break;
+                    }
 
-    async function clickTwitterPostButton() {
-        await utils.sleep(500);
+                    await utils.sleep(500);
+                    const nextInput = await waitForTwitterInput(5000);
+                    if (!nextInput) {
+                        utils.showToast(`Could not find input for tweet ${i + 1}`, 'warning');
+                        break;
+                    }
 
-        // Try multiple selectors in order of likelihood
-        const selectors = [
-            '[data-testid="tweetButtonInline"]',  // Most common (replies, inline)
-            '[data-testid="tweetButton"]',        // Quote tweets, main compose
-            '[role="button"][data-testid*="tweet"]', // Fallback pattern
-            'div[role="button"] span:has-text("Post")', // Text-based (risky, language-dependent)
-            'div[role="button"] span:has-text("Reply")', // Reply context
-        ];
-
-        let postButton = null;
-
-        // Try each selector
-        for (const selector of selectors) {
-            try {
-                const btn = document.querySelector(selector);
-                if (btn && utils.isElementVisible(btn) && !btn.disabled && !btn.getAttribute('aria-disabled')) {
-                    postButton = btn;
-                    Logger.debug('[Twitter] Found post button with selector:', selector);
-                    break;
+                    await utils.simulateTyping(nextInput, tweets[i]);
+                    await utils.sleep(200);
                 }
-            } catch (e) {
-                continue;
-            }
-        }
 
-        // Fallback: Look for visible button with "Post" or "Reply" text
-        if (!postButton) {
-            const allButtons = document.querySelectorAll('div[role="button"]');
-            for (const btn of allButtons) {
-                const text = btn.textContent.trim().toLowerCase();
-                if ((text === 'post' || text === 'reply' || text === 'tweet') &&
-                    utils.isElementVisible(btn) &&
-                    !btn.disabled &&
-                    !btn.getAttribute('aria-disabled')) {
-                    postButton = btn;
-                    Logger.debug('[Twitter] Found post button by text:', text);
-                    break;
-                }
-            }
-        }
-
-        if (postButton) {
-            // Check if button is actually clickable (not disabled by Twitter's validation)
-            const isDisabled = postButton.disabled ||
-                postButton.getAttribute('aria-disabled') === 'true' ||
-                postButton.classList.contains('disabled');
-
-            if (isDisabled) {
-                Logger.warn('[Twitter] Post button found but disabled');
-                utils.showToast('⚠️ Button disabled (check character limit or content)', 'warning');
-                return false;
+                utils.showToast(`Thread ready (${tweets.length} tweets)`, 'success');
+                return true;
             }
 
-            // Click with fallback methods
-            try {
-                postButton.click();
-            } catch (e) {
-                // Fallback: Dispatch click event
-                postButton.dispatchEvent(new MouseEvent('click', {
-                    bubbles: true,
-                    cancelable: true,
-                    view: window
-                }));
-            }
-
-            utils.showToast('✅ Posted!', 'success');
+            // post / longform just type into composer
+            await utils.simulateTyping(input, content);
+            utils.showToast(actionType === 'longform' ? 'Long post ready' : 'Post ready', 'success');
             return true;
-        } else {
-            Logger.error('[Twitter] Post button not found. Available buttons:',
-                Array.from(document.querySelectorAll('div[role="button"]')).map(b => b.outerHTML));
-            utils.showToast('❌ Post button not found', 'error');
+        } catch (e) {
+            Logger.error('[Twitter] CreatePost error', e);
+            if (e.message === 'AUTH_REQUIRED') utils.showAuthPrompt?.();
+            else utils.showToast(e?.message || 'Failed', 'error');
             return false;
+        } finally {
+            state.isProcessing = false;
         }
-    }
-
-    window.CrixenTwitter.debugTwitterUI = function () {
-        Logger.group('🐛 Twitter UI Debug');
-
-        Logger.debug('Available textareas:',
-            Array.from(document.querySelectorAll('[data-testid*="tweet"]')).map(el => ({
-                testid: el.getAttribute('data-testid'),
-                visible: utils.isElementVisible(el),
-                text: el.textContent.substring(0, 50)
-            }))
-        );
-
-        Logger.debug('Available buttons:',
-            Array.from(document.querySelectorAll('div[role="button"]')).map(el => ({
-                text: el.textContent.trim(),
-                testid: el.getAttribute('data-testid'),
-                visible: utils.isElementVisible(el),
-                disabled: el.disabled || el.getAttribute('aria-disabled')
-            }))
-        );
-
-        Logger.debug('Modal state:',
-            document.querySelector('[role="dialog"]') ? 'OPEN' : 'CLOSED'
-        );
-
-        Logger.groupEnd();
     };
 
 })();

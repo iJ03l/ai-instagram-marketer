@@ -1,105 +1,79 @@
-// Instagram AI Comment Assistant - Main Entry Point
+// Instagram AI Comment Assistant - Main Entry Point (Prod Grade)
 
-(function () {
+(() => {
     'use strict';
 
-    // Ensure namespace exists (should be created by utils)
     window.InstagramAssistant = window.InstagramAssistant || {};
     const utils = window.InstagramAssistant;
-    const state = utils.state || {}; // Fallback if utils not loaded yet (should not happen with manifest order)
+    const state = utils.state || {};
 
-    init();
+    const LOG_PREFIX = '[Crixen IG]';
 
-    function init() {
-        console.log('AI Comment Assistant: Initializing...');
-        if (utils.loadSettings) utils.loadSettings();
-        observeDOM();
-        setTimeout(injectButtons, 1000);
-        setInterval(injectButtons, 1500);
+    init().catch((e) => console.error(LOG_PREFIX, 'init failed', e));
+
+    async function init() {
+        console.log(LOG_PREFIX, 'Initializing...');
+
+        await utils.loadSettings?.();
+
+        // Observe DOM changes and inject deterministically
+        utils.startInjectionObserver?.();
+
+        // First pass inject
+        utils.injectButtonsIntoVisiblePosts?.();
+
+        // Lightweight periodic safety pass (not every 1.5s)
+        setInterval(() => {
+            try {
+                utils.injectButtonsIntoVisiblePosts?.();
+            } catch { }
+        }, 6000);
     }
 
-    // New Message Handler for Popup
+    // Message Handler for Popup/Background
     chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
-        if (request.action === 'triggerGenerate') {
-            handleKeyboardShortcut();
-        } else if (request.action === 'startAutoPilot') {
-            if (utils.startAutoPilot) utils.startAutoPilot(request.limit);
-            sendResponse({ success: true });
-        } else if (request.action === 'stopAutoPilot') {
-            if (utils.stopAutoPilot) utils.stopAutoPilot();
-            sendResponse({ success: true });
-        } else if (request.action === 'getAutoStatus') {
-            sendResponse({ isRunning: state.isAutoPilot, limit: state.autoLimit, count: state.autoCount });
-        }
-    });
-
-    function observeDOM() {
-        let timeout;
-        const observer = new MutationObserver((mutations) => {
-            let shouldInject = false;
-            mutations.forEach((mutation) => {
-                if (mutation.addedNodes.length > 0) shouldInject = true;
-            });
-            if (shouldInject) {
-                clearTimeout(timeout);
-                timeout = setTimeout(injectButtons, 300);
-            }
-        });
-        observer.observe(document.body, { childList: true, subtree: true });
-    }
-
-    function injectButtons() {
-        // Target articles (feed), main (Reels viewer), and dialogs (Reels modal)
-        const posts = document.querySelectorAll('article, main, div[role="dialog"]');
-        posts.forEach((post) => {
-            if (post.dataset.aiCommentInjected && post.querySelector('.ai-comment-btn-glass')) return;
-
-            const actionBar = utils.findActionBar ? utils.findActionBar(post) : null;
-            if (actionBar) {
-                const existingBtn = actionBar.querySelector('.ai-comment-btn-glass');
-                if (existingBtn) existingBtn.remove();
-
-                const btn = utils.createButton ? utils.createButton() : null;
-                if (!btn) return;
-
-                const container = document.createElement('div');
-                container.style.display = 'flex';
-                container.style.alignItems = 'center';
-
-                // Check if we are in a vertical stack (Reels)
-                const isVertical = actionBar.offsetHeight > actionBar.offsetWidth * 2; // rough heuristic
-                if (isVertical) {
-                    container.style.marginTop = '12px';
-                    container.style.flexDirection = 'column';
-                    // Make button smaller/circular for Reels if needed, or just standard
-                    // For now, keep standard but ensure it doesn't break layout
-                    btn.classList.add('reels-mode');
-                } else {
-                    container.style.marginLeft = '8px';
+        (async () => {
+            try {
+                if (!request || typeof request !== 'object') {
+                    sendResponse({ success: false, error: 'Invalid request' });
+                    return;
                 }
 
-                container.appendChild(btn);
+                if (request.action === 'triggerGenerate') {
+                    await utils.triggerOnCurrentPost?.();
+                    sendResponse({ success: true });
+                    return;
+                }
 
-                actionBar.appendChild(container);
+                if (request.action === 'startAutoPilot') {
+                    await utils.startAutoPilot?.(request.limit);
+                    sendResponse({ success: true });
+                    return;
+                }
 
-                btn.addEventListener('click', (e) => {
-                    e.preventDefault();
-                    e.stopPropagation();
-                    // Crucial: Blur the button so it doesn't steal focus back from the modal
-                    btn.blur();
-                    console.debug('AI Comment: Button clicked');
-                    if (utils.handleGenerateClick) utils.handleGenerateClick(post);
-                });
+                if (request.action === 'stopAutoPilot') {
+                    utils.stopAutoPilot?.();
+                    sendResponse({ success: true });
+                    return;
+                }
 
-                post.dataset.aiCommentInjected = 'true';
+                if (request.action === 'getAutoStatus') {
+                    sendResponse({
+                        success: true,
+                        isRunning: !!state.isAutoPilot,
+                        limit: state.autoLimit,
+                        count: state.autoCount,
+                        phase: state.autoPhase || 'idle'
+                    });
+                    return;
+                }
+
+                sendResponse({ success: false, error: 'Unknown action' });
+            } catch (e) {
+                sendResponse({ success: false, error: e?.message || String(e) });
             }
-        });
-    }
+        })();
 
-    function handleKeyboardShortcut() {
-        if (state.currentPost && utils.handleGenerateClick) {
-            utils.handleGenerateClick(state.currentPost);
-        }
-    }
-
+        return true;
+    });
 })();

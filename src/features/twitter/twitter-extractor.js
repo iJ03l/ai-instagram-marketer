@@ -1,38 +1,39 @@
-// Crixen - Twitter Content Extractor
+// Crixen - Twitter Content Extractor (Prod Grade)
 
-(function () {
+(() => {
     'use strict';
 
     window.CrixenTwitter = window.CrixenTwitter || {};
+    const utils = window.CrixenTwitter;
 
-    window.CrixenTwitter.extractTweetContent = function (tweetElement) {
+    function clean(s) {
+        return String(s || '').replace(/\s+/g, ' ').trim();
+    }
+
+    utils.extractTweetContent = function (tweetElement) {
         const parts = [];
-
-        // 1. Author
-        const userElement = tweetElement.querySelector('[data-testid="User-Name"]');
-        if (userElement) {
-            // Usually contains Name and @handle
-            const text = userElement.textContent;
-            parts.push(`Author: ${text}`);
-        }
-
-        // 2. Tweet Text
-        const textElement = tweetElement.querySelector('[data-testid="tweetText"]');
-        if (textElement) {
-            const text = textElement.textContent;
-            parts.push(`Tweet: "${text}"`);
-        }
-
-        // 3. Images (Vision Support) or Quote Tweets
-        const photos = tweetElement.querySelectorAll('[data-testid="tweetPhoto"] img');
         const imageUrls = [];
-        photos.forEach(img => {
-            if (img.src) imageUrls.push(img.src);
-        });
 
-        // Check for Quoted Status
-        const quote = tweetElement.querySelector('[role="link"][href*="/status/"]');
-        // Note: Quoted tweets are complex, basic extraction for now.
+        // Author
+        const userElement = tweetElement.querySelector('[data-testid="User-Name"]');
+        const authorText = clean(userElement?.textContent);
+        if (authorText) parts.push(`Author: ${authorText}`);
+
+        // Tweet text
+        const textElement = tweetElement.querySelector('[data-testid="tweetText"]');
+        const text = clean(textElement?.textContent);
+        if (text) parts.push(`Tweet: "${text}"`);
+
+        // Quoted tweet (best-effort)
+        const quoted = tweetElement.querySelector('article [data-testid="tweetText"]');
+        const quotedText = clean(quoted?.textContent);
+        if (quotedText && quotedText !== text) parts.push(`Quoted: "${quotedText}"`);
+
+        // Images
+        tweetElement.querySelectorAll('[data-testid="tweetPhoto"] img').forEach((img) => {
+            const src = img.currentSrc || img.src;
+            if (src && !imageUrls.includes(src)) imageUrls.push(src);
+        });
 
         const content = parts.join('\n');
         return {
@@ -40,5 +41,4 @@
             images: imageUrls.slice(0, 2)
         };
     };
-
 })();

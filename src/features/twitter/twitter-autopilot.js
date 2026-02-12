@@ -1,70 +1,116 @@
-// Crixen - Twitter Autopilot
+// Crixen - Twitter Autopilot (Prod Grade)
 
-(function () {
+(() => {
     'use strict';
 
     window.CrixenTwitter = window.CrixenTwitter || {};
     const utils = window.CrixenTwitter;
     const state = window.CrixenTwitter.state;
 
-    window.CrixenTwitter.startAutoPilot = function (limit) {
+    function broadcast() {
+        if (!utils.isExtensionValid()) return;
+        chrome.runtime.sendMessage({
+            action: 'autoProgress',
+            isRunning: state.isAutoPilot,
+            count: state.autoCount,
+            limit: state.autoLimit,
+            phase: state.autoPhase || 'idle'
+        }).catch(() => { });
+    }
+
+    async function humanDelay(minMs, maxMs, signal) {
+        const ms = Math.floor(minMs + Math.random() * (maxMs - minMs));
+        const start = Date.now();
+        while (Date.now() - start < ms) {
+            if (signal?.aborted) return false;
+            await utils.sleep(120);
+        }
+        return !signal?.aborted;
+    }
+
+    utils.startAutoPilot = async function (limit) {
         if (state.isAutoPilot) return;
+
         state.isAutoPilot = true;
-        state.autoLimit = limit || 20;
+        state.autoLimit = Number.isFinite(limit) ? Math.max(1, Math.min(200, limit)) : 20;
         state.autoCount = 0;
-        utils.showToast(`🚀 X Auto-Pilot Started!`, 'success');
-        autoLoop();
+        state.autoPhase = 'starting';
+        state.autoAbortController = new AbortController();
+
+        utils.showToast('X Auto-Pilot started', 'success');
+        broadcast();
+
+        try {
+            await autoLoop(state.autoAbortController.signal);
+        } finally {
+            state.isAutoPilot = false;
+            state.autoPhase = 'idle';
+            state.autoAbortController = null;
+            broadcast();
+        }
     };
 
-    window.CrixenTwitter.stopAutoPilot = function () {
+    utils.stopAutoPilot = function () {
         state.isAutoPilot = false;
-        utils.showToast('🛑 X Auto-Pilot Stopped', 'warning');
+        state.autoPhase = 'stopping';
+        state.autoAbortController?.abort?.();
+        utils.showToast('X Auto-Pilot stopped', 'warning');
+        broadcast();
     };
 
-    async function autoLoop() {
-        while (state.isAutoPilot && state.autoCount < state.autoLimit) {
+    async function autoLoop(signal) {
+        while (!signal.aborted && state.isAutoPilot && state.autoCount < state.autoLimit) {
+            state.autoPhase = 'finding';
+            broadcast();
 
-            // 1. Find visible tweets
-            const tweets = Array.from(document.querySelectorAll('article[data-testid="tweet"]'));
-            let target = null;
-
-            for (const t of tweets) {
-                if (!t.dataset.crixenProcessed && utils.isElementVisible(t)) {
-                    // Check if it's an ad?
-                    if (t.textContent.includes('Ad')) continue;
-                    target = t;
-                    break;
-                }
-            }
-
-            // 2. Scroll if needed
+            const target = utils.pickBestVisibleTweet();
             if (!target) {
-                window.scrollBy({ top: 500, behavior: 'smooth' });
-                await utils.sleep(2000);
+                state.autoPhase = 'scrolling';
+                broadcast();
+                window.scrollBy({ top: 900, behavior: 'smooth' });
+                if (!(await humanDelay(1600, 2600, signal))) break;
                 continue;
             }
 
-            // 3. Highlight
-            // target.style.borderLeft = '4px solid #1d9bf0';
+            // Move into view
+            state.autoPhase = 'positioning';
+            broadcast();
             target.scrollIntoView({ behavior: 'smooth', block: 'center' });
-            await utils.sleep(1000);
+            if (!(await humanDelay(700, 1100, signal))) break;
 
-            // 4. Process (Reply)
-            await window.CrixenTwitter.handleReply(target);
+            // Attempt reply (1 retry max)
+            state.autoPhase = 'replying';
+            broadcast();
 
-            // 5. Mark done
-            target.dataset.crixenProcessed = 'true';
-            target.style.borderLeft = 'none';
-            state.autoCount++;
+            target.style.outline = '2px solid #1d9bf0';
+            target.style.outlineOffset = '4px';
 
-            utils.showToast(`Auto: ${state.autoCount}/${state.autoLimit}`, 'info');
+            let ok = await utils.handleReply(target);
+            if (!ok && !signal.aborted) {
+                // Retry once after small delay (often modal glitches)
+                await humanDelay(900, 1400, signal);
+                ok = await utils.handleReply(target);
+            }
 
-            // 6. Wait
-            await utils.sleep(3000 + Math.random() * 4000);
+            target.style.outline = '';
+            target.style.outlineOffset = '';
+
+            if (signal.aborted || !state.isAutoPilot) break;
+
+            if (ok) {
+                target.dataset.crixenAutopilot = 'done';
+                state.autoCount += 1;
+                utils.showToast(`Auto: ${state.autoCount}/${state.autoLimit}`, 'info');
+            } else {
+                target.dataset.crixenAutopilot = 'skipped';
+            }
+
+            state.autoPhase = 'cooldown';
+            broadcast();
+            if (!(await humanDelay(3200, 6200, signal))) break;
         }
 
-        state.isAutoPilot = false;
-        utils.showToast('Task Complete', 'success');
+        if (!signal.aborted && state.autoCount >= state.autoLimit) utils.showToast('Task complete', 'success');
     }
 
 })();

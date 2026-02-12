@@ -1,24 +1,33 @@
-// Instagram AI Comment Assistant - Utils & Shared State
+// Instagram AI Comment Assistant - Utils & Shared State (Prod Grade)
 
-(function () {
+(() => {
     'use strict';
 
-    // Initialize Global Namespace
     window.InstagramAssistant = window.InstagramAssistant || {};
 
-    // Shared State
-    window.InstagramAssistant.state = {
+    const utils = window.InstagramAssistant;
+
+    utils.state = utils.state || {
         currentPost: null,
         settings: null,
         isProcessing: false,
+
+        // autopilot
         isAutoPilot: false,
         autoLimit: 20,
-        autoCount: 0
+        autoCount: 0,
+        autoPhase: 'idle',
+        autoAbortController: null,
+
+        // misc
+        lastGeneratedAt: 0
     };
 
-    // --- UTILITIES ---
+    const state = utils.state;
 
-    window.InstagramAssistant.isExtensionValid = function () {
+    // ---------- Core helpers ----------
+
+    utils.isExtensionValid = function () {
         try {
             chrome.runtime.id;
             return true;
@@ -27,292 +36,357 @@
         }
     };
 
-    window.InstagramAssistant.loadSettings = async function () {
-        if (!window.InstagramAssistant.isExtensionValid()) return;
+    utils.loadSettings = async function () {
+        if (!utils.isExtensionValid()) return;
         return new Promise((resolve) => {
             try {
                 chrome.runtime.sendMessage({ action: 'getSettings' }, (response) => {
-                    if (chrome.runtime.lastError) {
-                        resolve(); return;
-                    }
-                    window.InstagramAssistant.state.settings = response?.settings || { defaultStyle: 'friendly' };
+                    if (chrome.runtime.lastError) return resolve();
+                    state.settings = response?.settings || { defaultStyle: 'friendly', customPrompt: '' };
                     resolve();
                 });
-            } catch (e) { resolve(); }
+            } catch {
+                resolve();
+            }
         });
     };
 
-    window.InstagramAssistant.showToast = function (message, type = 'info') {
+    utils.sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+    utils.isElementVisible = function (el) {
+        if (!el) return false;
+        const rect = el.getBoundingClientRect();
+        if (rect.width < 2 || rect.height < 2) return false;
+        if (rect.bottom < 0 || rect.top > window.innerHeight) return false;
+        const style = window.getComputedStyle(el);
+        if (style.display === 'none' || style.visibility === 'hidden' || style.opacity === '0') return false;
+        return true;
+    };
+
+    utils.showToast = function (message, type = 'info') {
         const existing = document.querySelectorAll('.ai-toast-message');
-        existing.forEach(el => el.remove());
+        existing.forEach((el) => el.remove());
 
         const toast = document.createElement('div');
         toast.className = 'ai-toast-message';
         toast.textContent = message;
-        toast.style.position = 'fixed';
-        toast.style.bottom = '20px';
-        toast.style.left = '50%';
-        toast.style.transform = 'translateX(-50%)';
-        toast.style.backgroundColor = type === 'error' ? '#ff3b30' : (type === 'success' ? '#34c759' : '#007aff');
-        toast.style.color = 'white';
-        toast.style.padding = '12px 24px';
-        toast.style.borderRadius = '24px';
-        toast.style.zIndex = '10000';
-        toast.style.fontFamily = '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
-        toast.style.fontSize = '14px';
-        toast.style.fontWeight = '500';
-        toast.style.boxShadow = '0 4px 12px rgba(0,0,0,0.15)';
-        toast.style.opacity = '0';
-        toast.style.transition = 'all 0.3s ease';
 
-        document.body.appendChild(toast);
-        requestAnimationFrame(() => {
-            toast.style.opacity = '1';
-            toast.style.transform = 'translateX(-50%) translateY(-10px)';
-        });
-        setTimeout(() => {
-            toast.style.opacity = '0';
-            toast.style.transform = 'translateX(-50%) translateY(20px)';
-            setTimeout(() => toast.remove(), 300);
-        }, 4000);
-    };
-
-    window.InstagramAssistant.showAuthPrompt = function () {
-        const existing = document.querySelectorAll('.ai-auth-prompt');
-        existing.forEach(el => el.remove());
-
-        const toast = document.createElement('div');
-        toast.className = 'ai-auth-prompt';
-        toast.innerHTML = `
-            <div style="display: flex; align-items: center; gap: 12px;">
-                <span>🔒 Login required to use Crixen</span>
-                <button id="crixen-login-btn" style="
-                    background: white; 
-                    color: #007aff; 
-                    border: none; 
-                    padding: 6px 12px; 
-                    border-radius: 12px; 
-                    font-weight: 600; 
-                    cursor: pointer;
-                    font-size: 13px;
-                ">Login</button>
-            </div>
-        `;
+        const bg =
+            type === 'error' ? '#ff3b30' :
+                type === 'success' ? '#34c759' :
+                    type === 'warning' ? '#ff9f0a' : '#007aff';
 
         Object.assign(toast.style, {
             position: 'fixed',
             bottom: '20px',
             left: '50%',
             transform: 'translateX(-50%)',
-            backgroundColor: '#007aff',
+            backgroundColor: bg,
             color: 'white',
-            padding: '12px 20px',
-            borderRadius: '24px',
-            zIndex: '10000',
-            fontFamily: '-apple-system, BlinkMacSystemFont, sans-serif',
+            padding: '12px 18px',
+            borderRadius: '999px',
+            zIndex: '2147483647',
+            fontFamily: '-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif',
             fontSize: '14px',
-            fontWeight: '500',
-            boxShadow: '0 4px 12px rgba(0,0,0,0.2)',
+            fontWeight: '600',
+            boxShadow: '0 6px 18px rgba(0,0,0,0.18)',
             opacity: '0',
-            transition: 'all 0.3s ease'
+            transition: 'all 220ms ease'
         });
 
         document.body.appendChild(toast);
-
-        document.getElementById('crixen-login-btn').addEventListener('click', () => {
-            window.open('https://crixen.xyz', '_blank');
-            toast.remove();
-        });
-
         requestAnimationFrame(() => {
             toast.style.opacity = '1';
             toast.style.transform = 'translateX(-50%) translateY(-10px)';
         });
 
         setTimeout(() => {
-            if (document.body.contains(toast)) {
-                toast.style.opacity = '0';
-                toast.style.transform = 'translateX(-50%) translateY(20px)';
-                setTimeout(() => toast.remove(), 300);
-            }
-        }, 8000); // Longer timeout for action
+            toast.style.opacity = '0';
+            toast.style.transform = 'translateX(-50%) translateY(16px)';
+            setTimeout(() => toast.remove(), 250);
+        }, 3500);
     };
 
-    window.InstagramAssistant.sleep = function (ms) {
-        return new Promise(resolve => setTimeout(resolve, ms));
+    utils.showAuthPrompt = function () {
+        const existing = document.querySelectorAll('.ai-auth-prompt');
+        existing.forEach((el) => el.remove());
+
+        const box = document.createElement('div');
+        box.className = 'ai-auth-prompt';
+        box.innerHTML = `
+      <div style="display:flex;align-items:center;gap:12px;">
+        <span style="font-weight:700;">Login required to use Crixen</span>
+        <button id="crixen-login-btn" style="
+          background:#fff;color:#007aff;border:none;
+          padding:6px 12px;border-radius:12px;font-weight:800;
+          cursor:pointer;font-size:13px;
+        ">Login</button>
+      </div>
+    `;
+
+        Object.assign(box.style, {
+            position: 'fixed',
+            bottom: '20px',
+            left: '50%',
+            transform: 'translateX(-50%)',
+            backgroundColor: '#007aff',
+            color: 'white',
+            padding: '12px 16px',
+            borderRadius: '999px',
+            zIndex: '2147483647',
+            fontFamily: '-apple-system,BlinkMacSystemFont,sans-serif',
+            fontSize: '14px',
+            boxShadow: '0 10px 24px rgba(0,0,0,0.22)',
+            opacity: '0',
+            transition: 'all 220ms ease'
+        });
+
+        document.body.appendChild(box);
+
+        box.querySelector('#crixen-login-btn')?.addEventListener('click', () => {
+            window.open('https://crixen.xyz', '_blank');
+            box.remove();
+        });
+
+        requestAnimationFrame(() => {
+            box.style.opacity = '1';
+            box.style.transform = 'translateX(-50%) translateY(-10px)';
+        });
+
+        setTimeout(() => box.remove(), 9000);
     };
 
-    window.InstagramAssistant.isElementVisible = function (el) {
-        if (!el) return false;
-        if (el.offsetParent === null) return false;
-        const style = window.getComputedStyle(el);
-        if (style.display === 'none') return false;
-        if (style.visibility === 'hidden') return false;
-        if (style.opacity === '0') return false;
-        const rect = el.getBoundingClientRect();
-        if (rect.width === 0 || rect.height === 0) return false;
-        return true;
-    };
+    // ---------- Injection (prod-grade) ----------
 
-    window.InstagramAssistant.waitForStrictInput = function (timeout = 3000) {
-        return new Promise((resolve) => {
-            const check = () => {
-                // 1. Check Active Element first (users suggestion: "just ctrl+v")
-                if (document.activeElement) {
-                    const el = document.activeElement;
-                    const tagName = el.tagName.toLowerCase();
-                    if (tagName === 'textarea' ||
-                        el.getAttribute('contenteditable') === 'true' ||
-                        el.contentEditable === 'true') {
-                        return el;
-                    }
-                }
+    utils.startInjectionObserver = function () {
+        if (state._injectObserverStarted) return;
+        state._injectObserverStarted = true;
 
-                // 2. Search in Dialogs (Broadened selector)
-                const dialogInputs = document.querySelectorAll('div[role="dialog"] textarea, div[role="dialog"] [contenteditable="true"]');
-                for (const el of dialogInputs) {
-                    if (window.InstagramAssistant.isElementVisible(el)) return el;
-                }
+        let scheduled = false;
 
-                // 3. Search Globally
-                const allInputs = document.querySelectorAll('textarea, [contenteditable="true"]');
-                for (const el of allInputs) {
-                    if (window.InstagramAssistant.isElementVisible(el)) return el;
-                }
-                return null;
-            };
-
-            const existing = check();
-            if (existing) {
-                resolve(existing);
-                return;
-            }
-
-            const observer = new MutationObserver(() => {
-                const el = check();
-                if (el) {
-                    observer.disconnect();
-                    resolve(el);
-                }
-            });
-
-            observer.observe(document.body, { childList: true, subtree: true });
-
+        const schedule = () => {
+            if (scheduled) return;
+            scheduled = true;
             setTimeout(() => {
-                observer.disconnect();
-                resolve(check());
-            }, timeout);
+                scheduled = false;
+                utils.injectButtonsIntoVisiblePosts();
+            }, 250);
+        };
+
+        const mo = new MutationObserver((mutations) => {
+            for (const m of mutations) {
+                if (m.addedNodes?.length) {
+                    schedule();
+                    return;
+                }
+            }
+        });
+
+        mo.observe(document.documentElement || document.body, {
+            childList: true,
+            subtree: true
         });
     };
 
-    window.InstagramAssistant.findPostButtonInContainer = function (container) {
-        const potentialButtons = container.querySelectorAll('[role="button"], button');
-        for (const btn of potentialButtons) {
-            const text = btn.textContent.trim().toLowerCase();
-            if (text === 'post' && window.InstagramAssistant.isElementVisible(btn) && !btn.disabled) return btn;
-        }
-        // Second pass: accept disabled if no enabled found (to try enabling it)
-        for (const btn of potentialButtons) {
-            const text = btn.textContent.trim().toLowerCase();
-            if (text === 'post' && window.InstagramAssistant.isElementVisible(btn)) return btn;
-        }
+    utils.injectButtonsIntoVisiblePosts = function () {
+        // Look at likely containers
+        const nodes = document.querySelectorAll('article, main, div[role="dialog"]');
 
-        if (container !== document.body) {
-            const globalBtns = document.querySelectorAll('div[role="dialog"] [role="button"], div[role="dialog"] button');
-            for (const btn of globalBtns) {
-                if (btn.textContent.trim().toLowerCase() === 'post' && window.InstagramAssistant.isElementVisible(btn)) return btn;
+        for (const post of nodes) {
+            // only inject when visible-ish to reduce DOM churn
+            if (!utils.isElementVisible(post)) continue;
+
+            const actionBar = utils.findActionBar?.(post);
+            if (!actionBar) continue;
+
+            const existingBtn = actionBar.querySelector('.ai-comment-btn-glass');
+            if (existingBtn) continue;
+
+            const btn = utils.createButton?.();
+            if (!btn) continue;
+
+            const wrapper = document.createElement('div');
+            wrapper.style.display = 'flex';
+            wrapper.style.alignItems = 'center';
+
+            const isVertical = actionBar.offsetHeight > actionBar.offsetWidth * 2;
+            if (isVertical) {
+                wrapper.style.marginTop = '12px';
+                wrapper.style.flexDirection = 'column';
+                btn.classList.add('reels-mode');
+            } else {
+                wrapper.style.marginLeft = '8px';
             }
+
+            wrapper.appendChild(btn);
+            actionBar.appendChild(wrapper);
+
+            btn.addEventListener('click', (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                btn.blur();
+                utils.handleGenerateClick?.(post);
+            });
         }
-        return null;
     };
 
-    window.InstagramAssistant.findActionBar = function (post) {
-        const svgs = post.querySelectorAll('svg');
-        for (const svg of svgs) {
-            const label = svg.getAttribute('aria-label');
-            if (label === 'Like' || label === 'Comment' || label === 'Share') {
-                // For Reels, the buttons are often in a vertical stack:
-                // svg -> div -> div[role="button"] -> div (wrapper) -> div (stack item) -> div (stack container)
-                // We want to find the container to append to.
-
-                // 1. Find the clickable element
-                const btn = svg.closest('[role="button"]') || svg.closest('button');
-                if (btn) {
-                    // 2. Go up to find the common container.
-                    // In Reels, btn.parentElement is a wrapper, and btn.parentElement.parentElement is the stack.
-                    // Let's try to find the parent that contains other action buttons.
-                    let parent = btn.parentElement;
-                    for (let i = 0; i < 4; i++) {
-                        if (parent) {
-                            if (parent.querySelectorAll('svg[aria-label="Like"], svg[aria-label="Comment"]').length > 1) {
-                                return parent;
-                            }
-                            parent = parent.parentElement;
-                        }
-                    }
-                    // Fallback: just return the grandparent of the button
-                    return btn.parentElement?.parentElement;
-                }
-            }
-        }
-        return post.querySelector('section._aamu') || post.querySelector('div.x1bedvcd');
-    };
-
-    window.InstagramAssistant.createButton = function () {
-        const btn = document.createElement('div');
-        btn.innerHTML = 'AI Comment';
+    utils.createButton = function () {
+        const btn = document.createElement('button');
+        btn.type = 'button';
         btn.className = 'ai-comment-btn-glass';
-        btn.setAttribute('role', 'button');
+        btn.textContent = 'AI Comment';
+        Object.assign(btn.style, {
+            cursor: 'pointer',
+            border: '1px solid rgba(255,255,255,0.22)',
+            background: 'rgba(0,0,0,0.35)',
+            color: 'white',
+            padding: '8px 12px',
+            borderRadius: '999px',
+            fontWeight: '800',
+            fontSize: '12px',
+            letterSpacing: '0.2px'
+        });
         return btn;
     };
 
-    window.InstagramAssistant.closeModal = function (startUrl) {
-        console.log('AI Comment: Closing modal...');
-        const escEvent = new KeyboardEvent('keydown', { key: 'Escape', code: 'Escape', keyCode: 27, which: 27, bubbles: true, cancelable: true, view: window });
-        document.dispatchEvent(escEvent);
+    // ---------- DOM target helpers ----------
 
-        setTimeout(() => {
-            const closeBtn = document.querySelector('[aria-label="Close"]') ||
-                document.querySelector('svg[aria-label="Close"]')?.closest('[role="button"]');
-            if (closeBtn) {
-                if (typeof closeBtn.click === 'function') closeBtn.click();
-                else closeBtn.dispatchEvent(new MouseEvent('click', { view: window, bubbles: true, cancelable: true }));
-            }
-        }, 200);
+    utils.findActionBar = function (post) {
+        // Prefer a container that includes Like/Comment icons.
+        const svgs = post.querySelectorAll('svg[aria-label]');
+        for (const svg of svgs) {
+            const label = svg.getAttribute('aria-label');
+            if (label === 'Like' || label === 'Comment' || label === 'Share') {
+                const btn = svg.closest('[role="button"],button');
+                if (!btn) continue;
 
-        setTimeout(() => {
-            if (startUrl && window.location.href !== startUrl) {
-                if (window.history.length > 1) window.history.back();
-            }
-        }, 500);
-    };
-
-    window.InstagramAssistant.findCommentIcon = function (post) {
-        const selectors = [
-            'svg[aria-label="Comment"]',
-            'svg[aria-label="comment"]',
-            '[aria-label="Comment"]',
-            '[aria-label="comment"]'
-        ];
-        for (const selector of selectors) {
-            const icon = post.querySelector(selector);
-            if (icon) {
-                const clickable = icon.closest('button') || icon.closest('div[role="button"]') || icon.closest('span') || icon.parentElement;
-                if (clickable) return clickable;
+                let parent = btn.parentElement;
+                for (let i = 0; i < 5 && parent; i++) {
+                    const count = parent.querySelectorAll('svg[aria-label="Like"], svg[aria-label="Comment"], svg[aria-label="Share"]').length;
+                    if (count >= 2) return parent;
+                    parent = parent.parentElement;
+                }
+                return btn.parentElement?.parentElement || btn.parentElement || null;
             }
         }
-        const svgs = post.querySelectorAll('svg');
-        for (const svg of svgs) {
-            const parent = svg.parentElement;
-            if (parent && parent.tagName !== 'BUTTON') {
-                const rect = svg.getBoundingClientRect();
-                if (rect.width >= 20 && rect.width <= 32) {
-                    const clickable = svg.closest('button') || svg.closest('div[role="button"]');
-                    if (clickable) return clickable;
-                }
-            }
+        return post.querySelector('section') || null;
+    };
+
+    utils.findCommentIcon = function (post) {
+        const selectors = ['svg[aria-label="Comment"]', '[aria-label="Comment"]'];
+        for (const sel of selectors) {
+            const icon = post.querySelector(sel);
+            if (!icon) continue;
+            return icon.closest('button,div[role="button"]') || icon;
         }
         return null;
     };
 
+    utils.waitFor = async function (fn, { timeoutMs = 5000, intervalMs = 100 } = {}) {
+        const start = Date.now();
+        while (Date.now() - start < timeoutMs) {
+            const val = fn();
+            if (val) return val;
+            await utils.sleep(intervalMs);
+        }
+        return null;
+    };
+
+    utils.waitForStrictInput = async function (timeout = 5000) {
+        const find = () => {
+            const active = document.activeElement;
+            if (active) {
+                const tag = active.tagName?.toLowerCase();
+                if (tag === 'textarea' || active.getAttribute('contenteditable') === 'true' || active.isContentEditable) {
+                    return active;
+                }
+            }
+
+            const inDialogs = document.querySelectorAll('div[role="dialog"] textarea, div[role="dialog"] [contenteditable="true"]');
+            for (const el of inDialogs) if (utils.isElementVisible(el)) return el;
+
+            const all = document.querySelectorAll('textarea, [contenteditable="true"]');
+            for (const el of all) if (utils.isElementVisible(el)) return el;
+
+            return null;
+        };
+
+        const existing = find();
+        if (existing) return existing;
+
+        // wait using polling (less fragile than MutationObserver here)
+        return utils.waitFor(find, { timeoutMs: timeout, intervalMs: 120 });
+    };
+
+    utils.findPostButtonInContainer = function (container) {
+        const within = container || document.body;
+        const candidates = within.querySelectorAll('button,[role="button"]');
+        for (const btn of candidates) {
+            const t = (btn.textContent || '').trim().toLowerCase();
+            if (t === 'post' && utils.isElementVisible(btn)) return btn;
+        }
+        // fallback: dialog-wide
+        const dialogBtns = document.querySelectorAll('div[role="dialog"] button, div[role="dialog"] [role="button"]');
+        for (const btn of dialogBtns) {
+            const t = (btn.textContent || '').trim().toLowerCase();
+            if (t === 'post' && utils.isElementVisible(btn)) return btn;
+        }
+        return null;
+    };
+
+    utils.closeModal = function (startUrl) {
+        // best effort close
+        const esc = new KeyboardEvent('keydown', {
+            key: 'Escape',
+            code: 'Escape',
+            keyCode: 27,
+            which: 27,
+            bubbles: true,
+            cancelable: true,
+            view: window
+        });
+        document.dispatchEvent(esc);
+
+        setTimeout(() => {
+            const closeBtn =
+                document.querySelector('[aria-label="Close"]') ||
+                document.querySelector('svg[aria-label="Close"]')?.closest('[role="button"],button');
+            closeBtn?.click?.();
+        }, 200);
+
+        setTimeout(() => {
+            if (startUrl && window.location.href !== startUrl && window.history.length > 1) {
+                window.history.back();
+            }
+        }, 650);
+    };
+
+    // Used by popup keyboard shortcut
+    utils.triggerOnCurrentPost = async function () {
+        if (state.currentPost) {
+            await utils.handleGenerateClick?.(state.currentPost);
+            return;
+        }
+        // pick best visible post
+        const post = utils.pickBestVisiblePost?.();
+        if (post) await utils.handleGenerateClick?.(post);
+        else utils.showToast('No post found in view', 'warning');
+    };
+
+    utils.pickBestVisiblePost = function () {
+        const posts = Array.from(document.querySelectorAll('article'));
+        const scored = [];
+
+        for (const p of posts) {
+            if (!utils.isElementVisible(p)) continue;
+            const r = p.getBoundingClientRect();
+            const centerDist = Math.abs((r.top + r.bottom) / 2 - window.innerHeight / 2);
+            const already = p.dataset.aiCommented;
+            if (already === 'true') continue;
+            scored.push({ p, score: centerDist });
+        }
+
+        scored.sort((a, b) => a.score - b.score);
+        return scored[0]?.p || null;
+    };
 })();

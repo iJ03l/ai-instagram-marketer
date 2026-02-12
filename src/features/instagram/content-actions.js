@@ -1,231 +1,242 @@
-// Instagram AI Comment Assistant - Actions & Interaction
+// Instagram AI Comment Assistant - Actions & Interaction (Prod Grade)
 
-(function () {
+(() => {
     'use strict';
 
     window.InstagramAssistant = window.InstagramAssistant || {};
-
-    // Shortcuts to utils and state
     const utils = window.InstagramAssistant;
     const state = window.InstagramAssistant.state;
 
-    // --- TYPING SIMULATION ---
-    window.InstagramAssistant.simulateTyping = async function (element, text) {
+    // -------- typing (react-safe) --------
+
+    utils.simulateTyping = async function (element, text) {
         window.focus();
         element.focus();
         await utils.sleep(50);
 
-        // Method 1: execCommand 'insertText' (Standard for ContentEditable)
-        // We do NOT clear innerHTML manually, as it breaks React's tracking.
-        // Instead we select all and replace.
-        let success = false;
-        if (element.contentEditable === 'true' || element.getAttribute('contenteditable') === 'true') {
-            try {
-                // Ensure focus is really on the element
-                if (document.activeElement !== element) {
-                    element.focus();
-                }
+        const isCE = element.isContentEditable || element.getAttribute('contenteditable') === 'true';
 
-                // Select all content first
+        // Best path for IG (contenteditable): execCommand insertText
+        try {
+            if (isCE) {
                 document.execCommand('selectAll', false, null);
-                // Then insert text (replaces selection)
-                if (document.execCommand('insertText', false, text)) {
-                    success = true;
-                }
-            } catch (e) {
-                console.log('AI Comment: execCommand failed', e);
+                const ok = document.execCommand('insertText', false, text);
+                element.dispatchEvent(new Event('input', { bubbles: true }));
+                if (ok) return true;
             }
+        } catch {
+            // ignore
         }
 
-        // Verification after Method 1
-        let currentVal = element.tagName === 'TEXTAREA' ? element.value : element.textContent;
-        if (success && currentVal && currentVal.length > 0) {
+        // Textarea: use native setter so React sees it
+        try {
+            if (element.tagName === 'TEXTAREA') {
+                const setter = Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value')?.set;
+                if (setter) setter.call(element, text);
+                else element.value = text;
+
+                element.dispatchEvent(new Event('input', { bubbles: true }));
+                element.dispatchEvent(new Event('change', { bubbles: true }));
+                return true;
+            }
+        } catch {
+            // ignore
+        }
+
+        // Fallback
+        try {
+            element.textContent = text;
             element.dispatchEvent(new Event('input', { bubbles: true }));
+            element.dispatchEvent(new Event('change', { bubbles: true }));
+            return true;
+        } catch {
+            // ignore
+        }
+
+        return false;
+    };
+
+    function getComposerText(el) {
+        if (!el) return '';
+        if (el.tagName === 'TEXTAREA') return el.value || '';
+        return el.textContent || '';
+    }
+
+    function normalizeForMatch(s) {
+        return String(s || '')
+            .toLowerCase()
+            .replace(/\s+/g, ' ')
+            .replace(/[^\p{L}\p{N}\s]/gu, '') // remove punctuation, unicode-safe
+            .trim();
+    }
+
+    async function waitForTextInContainer(container, text, timeoutMs = 6500) {
+        const target = normalizeForMatch(text).slice(0, 120);
+        if (!target) return false;
+
+        const start = Date.now();
+        while (Date.now() - start < timeoutMs) {
+            const current = normalizeForMatch(container?.innerText || '');
+            if (current.includes(target)) return true;
+            await utils.sleep(200);
+        }
+        return false;
+    }
+
+    async function ensurePostButtonEnabled(inputEl, container) {
+        // Try multiple nudges to get React/IG to enable the Post button
+        for (let i = 0; i < 12; i++) {
+            const btn = utils.findPostButtonInContainer(container);
+            if (btn && !btn.disabled) return btn;
+
+            inputEl.focus();
+
+            // Nudge (often wakes IG):
+            // insert space then delete space
+            try {
+                document.execCommand('insertText', false, ' ');
+                await utils.sleep(35);
+                document.execCommand('delete', false, null);
+            } catch {
+                // Fallback: dispatch input
+                inputEl.dispatchEvent(new Event('input', { bubbles: true }));
+            }
+
+            await utils.sleep(180);
+        }
+
+        return utils.findPostButtonInContainer(container);
+    }
+
+    async function verifyPosted({ dialogOrForm, beforeSnapshot, comment }) {
+        // Verification heuristics (in order):
+        // 1) Composer cleared
+        // 2) Dialog text changed
+        // 3) Comment text appears in dialog (best effort)
+        await utils.sleep(900);
+
+        const input = await utils.waitForStrictInput(1200);
+        if (input) {
+            const t = getComposerText(input).trim();
+            if (!t) return true;
+        }
+
+        const afterText = (dialogOrForm?.innerText || '').slice(0, 2000);
+        if (beforeSnapshot && afterText && afterText !== beforeSnapshot) {
+            // It changed - might be posted, might be re-render. Continue to stronger check:
+            if (comment) {
+                const appeared = await waitForTextInContainer(dialogOrForm, comment, 4500);
+                if (appeared) return true;
+            }
+            // If we can't confirm appearance, still accept change as weak success signal:
             return true;
         }
 
-        console.log('AI Comment: Method 1 failed or empty, trying Method 2 (Direct + Events)');
-
-        // Method 2: Direct Manipulation with robust event sequence
-        if (element.tagName === 'TEXTAREA') {
-            const nativeSetter = Object.getOwnPropertyDescriptor(window.HTMLTextAreaElement.prototype, 'value')?.set;
-            if (nativeSetter) {
-                nativeSetter.call(element, text);
-            } else {
-                element.value = text;
-            }
-        } else {
-            element.textContent = text;
+        if (comment) {
+            const appeared = await waitForTextInContainer(dialogOrForm, comment, 4500);
+            if (appeared) return true;
         }
 
-        // Fire events to notify frameworks (React, etc)
-        const events = [
-            new InputEvent('beforeinput', { bubbles: true, inputType: 'insertText', data: text }),
-            new Event('input', { bubbles: true }),
-            new Event('change', { bubbles: true }),
-            new KeyboardEvent('keydown', { bubbles: true, key: 'a' }),
-            new KeyboardEvent('keyup', { bubbles: true, key: 'a' }),
-            new Event('blur', { bubbles: true }),
-            new Event('focus', { bubbles: true }) // refocus to ensure active state
-        ];
+        return false;
+    }
 
-        for (const evt of events) {
-            element.dispatchEvent(evt);
-        }
-
-        // Final fallback: Clipboard if still empty?
-        // Usually Direct + Events is enough. 
-        // We just ensure we wait a bit for React to process.
-        await utils.sleep(100);
-        return true;
-    };
-
-    window.InstagramAssistant.postCommentInModal = async function (comment, startUrl) {
+    utils.postCommentInModal = async function (comment, startUrl) {
         utils.showToast('Posting...', 'info');
 
-        const input = await utils.waitForStrictInput(5000);
-
+        let input = await utils.waitForStrictInput(6500);
         if (!input) {
-            // Fallback: Check active element one last time
-            const active = document.activeElement;
-            if (active && (active.tagName === 'TEXTAREA' || active.contentEditable === 'true')) {
-                console.warn('AI Comment: Strict search failed, using active element');
-                // Use the active element
-                input = active;
-            } else {
-                utils.showToast('Input not found. Click the box manually?', 'warning');
-                // Don't abort immediately, give user a second to click
-                await utils.sleep(2000);
-                const retryParams = await utils.waitForStrictInput(1000);
-                if (retryParams) {
-                    input = retryParams;
-                } else {
-                    utils.showToast('Input not found', 'error');
-                    state.isProcessing = false;
-                    return;
-                }
-            }
+            utils.showToast('Input not found. Click the box and try again.', 'warning');
+            state.isProcessing = false;
+            return false;
         }
 
         input.scrollIntoView({ behavior: 'smooth', block: 'center' });
-        await utils.sleep(300); // Wait for scroll
+        await utils.sleep(250);
+
         input.focus();
         input.click();
         await utils.sleep(150);
 
-        console.log('AI Comment: Found strict input:', input);
+        const typed = await utils.simulateTyping(input, comment);
+        if (!typed) {
+            utils.showToast('Failed to insert text', 'error');
+            state.isProcessing = false;
+            return false;
+        }
 
-        await utils.simulateTyping(input, comment);
-
-        input.blur();
-        await utils.sleep(50);
-        input.focus();
-        await utils.sleep(600);
+        await utils.sleep(350);
 
         const container = input.closest('form') || input.closest('div[role="dialog"]') || document.body;
-        let postBtn = null;
-        let attempts = 0;
-        const maxAttempts = 15;
 
-        while (!postBtn && attempts < maxAttempts) {
-            await utils.sleep(300);
-            postBtn = utils.findPostButtonInContainer(container);
-            attempts++;
-            if (!postBtn) {
-                input.dispatchEvent(new InputEvent('input', { inputType: 'insertText', data: ' ', bubbles: true }));
-            }
+        const beforeSnapshot = (container?.innerText || '').slice(0, 2000);
+        const postBtn = await ensurePostButtonEnabled(input, container);
+
+        if (!postBtn || postBtn.disabled) {
+            utils.showToast('Post button not available', 'error');
+            state.isProcessing = false;
+            return false;
         }
 
-        if (postBtn) {
-            if (postBtn.disabled || postBtn.style.opacity < '0.5') {
-                // If button is still disabled, it means the input events didn't register.
-                // Try one more distinct input event sequence that usually wakes up React.
-                console.warn('AI Comment: Post button disabled, trying to wake React...');
-                input.focus();
-                document.execCommand('insertText', false, ' ');
-                await utils.sleep(50);
-                document.execCommand('delete'); // Undo the space
-                await utils.sleep(50);
-            }
+        postBtn.click();
 
-            // Double check
-            if (postBtn.disabled) {
-                console.error('AI Comment: Failed to enable post button');
-                utils.showToast('Failed to insert text correctly', 'error');
-                state.isProcessing = false;
-                return;
-            }
+        const ok = await verifyPosted({ dialogOrForm: container, beforeSnapshot, comment });
 
-            postBtn.click();
-
+        if (ok) {
             if (utils.isExtensionValid()) {
-                chrome.runtime.sendMessage({ action: 'updateStats', statType: 'posted' });
+                chrome.runtime.sendMessage({ action: 'updateStats', statType: 'posted' }).catch(() => { });
             }
+
             utils.showToast('✅ Comment posted!', 'success');
 
-            // Mark as commented for Auto-Pilot
-            if (state.currentPost) {
-                state.currentPost.dataset.aiCommented = 'true';
-            }
+            if (state.currentPost) state.currentPost.dataset.aiCommented = 'true';
 
-            setTimeout(() => utils.closeModal(startUrl), 1500);
+            setTimeout(() => utils.closeModal(startUrl), 1200);
 
-        } else {
-            console.log('AI Comment: no post button found');
-            utils.showToast('Post button not found', 'warning');
+            state.isProcessing = false;
+            return true;
         }
 
+        utils.showToast('Post may not have sent. Check and retry.', 'warning');
         state.isProcessing = false;
+        return false;
     };
 
-    window.InstagramAssistant.handleGenerateClick = async function (post) {
+    utils.handleGenerateClick = async function (post) {
         if (!utils.isExtensionValid()) {
-            utils.showToast('Reloading needs refresh', 'warning');
-            return;
+            utils.showToast('Extension needs refresh', 'warning');
+            return false;
         }
 
+        // Strong single-flight lock
         if (state.isProcessing) {
-            const lastClick = parseInt(post.dataset.lastClickTime || '0');
-            const now = Date.now();
-            if (now - lastClick > 10000) {
-                state.isProcessing = false;
-            } else {
-                utils.showToast('Generating... please wait', 'warning');
-                return;
-            }
+            utils.showToast('Already processing...', 'warning');
+            return false;
         }
+
+        state.isProcessing = true;
+        state.currentPost = post;
 
         const startUrl = window.location.href;
 
-        state.currentPost = post;
-        state.isProcessing = true;
-        post.dataset.lastClickTime = Date.now().toString();
-
-        utils.showToast('🤖 Analyzing post & generating...', 'info');
-
-        const postData = utils.extractPostContent(post);
-
-        if (!postData) {
-            console.warn('AI Comment: No context found (caption/alt). Cannot generate specific comment.');
-            utils.showToast('⚠️ No context (caption/alt) found. Cannot generate.', 'error');
-            state.isProcessing = false;
-            return;
-        }
-
-        if (!postData.text || postData.text.length < 10) {
-            console.warn('AI Comment: Content extraction unreliable', postData);
-        }
-
-        await utils.loadSettings();
-        const style = state.settings?.defaultStyle || 'friendly';
-
         try {
-            console.debug('AI Comment: Sending request with vision data...');
+            utils.showToast('Analyzing + generating...', 'info');
+
+            const postData = utils.extractPostContent?.(post);
+            if (!postData?.text || postData.text.length < 8) {
+                utils.showToast('No caption/context found. Skipping.', 'warning');
+                post.dataset.aiCommented = 'skipped';
+                state.isProcessing = false;
+                return false;
+            }
+
+            await utils.loadSettings?.();
+            const style = state.settings?.defaultStyle || 'friendly';
+
             const response = await chrome.runtime.sendMessage({
                 action: 'generateComment',
                 postContent: postData.text,
                 imageUrls: postData.images,
-                style: style,
+                style,
                 customPrompt: state.settings?.customPrompt || '',
                 platform: 'instagram',
                 actionType: 'comment'
@@ -233,55 +244,57 @@
 
             if (chrome.runtime.lastError) throw new Error('Extension context invalidated');
 
-            if (!response || !response.success) {
-                if (response?.error === 'AUTH_REQUIRED') {
+            if (!response?.success) {
+                if (response?.code === 'AUTH_REQUIRED' || response?.error === 'AUTH_REQUIRED') {
                     utils.showAuthPrompt();
+                } else if (response?.code === 'RATE_LIMITED') {
+                    utils.showToast('Rate limited. Slow down a bit.', 'warning');
                 } else {
                     utils.showToast(response?.error || 'Generation failed', 'error');
                 }
                 state.isProcessing = false;
-                return;
+                return false;
             }
 
-            const comment = response.comment;
-
+            const comment = String(response.comment || '').trim();
             if (!comment) {
                 utils.showToast('Empty comment received', 'error');
                 state.isProcessing = false;
-                return;
+                return false;
             }
-
-            utils.showToast('💬 Opening modal...', 'info');
 
             if (utils.isExtensionValid()) {
-                chrome.runtime.sendMessage({
-                    action: 'updateStats',
-                    statType: 'generated',
-                    style: style
-                });
+                chrome.runtime.sendMessage({ action: 'updateStats', statType: 'generated', style }).catch(() => { });
             }
 
-            const commentIcon = utils.findCommentIcon(post);
+            utils.showToast('Opening comment box...', 'info');
 
-            if (commentIcon) {
-                commentIcon.click();
-                setTimeout(() => {
-                    utils.postCommentInModal(comment, startUrl);
-                }, 1000);
-            } else {
+            const commentIcon = utils.findCommentIcon?.(post);
+            if (!commentIcon) {
                 utils.showToast('Comment icon not found', 'error');
+                post.dataset.aiCommented = 'skipped';
                 state.isProcessing = false;
+                return false;
             }
 
-        } catch (error) {
-            console.error('AI Comment:', error);
-            if (error.message.includes('validat')) { // Matches 'invalidated' or 'context invalid'
-                utils.showToast('Extension updated: Please REFRESH page!', 'error');
-            } else {
-                utils.showToast('Error: ' + error.message, 'error');
+            commentIcon.click();
+
+            const input = await utils.waitForStrictInput(6500);
+            if (!input) {
+                utils.showToast('Comment input did not open', 'error');
+                post.dataset.aiCommented = 'skipped';
+                state.isProcessing = false;
+                return false;
             }
+
+            return await utils.postCommentInModal(comment, startUrl);
+        } catch (e) {
+            console.error('[Crixen IG] error', e);
+            const msg = e?.message || String(e);
+            if (/invalidat/i.test(msg)) utils.showToast('Extension updated. Refresh the page.', 'error');
+            else utils.showToast(`Error: ${msg}`, 'error');
             state.isProcessing = false;
+            return false;
         }
     };
-
 })();
