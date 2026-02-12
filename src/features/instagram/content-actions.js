@@ -7,54 +7,112 @@
     const utils = window.InstagramAssistant;
     const state = window.InstagramAssistant.state;
 
+
     // -------- typing (react-safe) --------
 
     utils.simulateTyping = async function (element, text) {
-        window.focus();
-        element.focus();
-        await utils.sleep(50);
+        if (!element) return false;
+
+        // VERIFY: Already contains it?
+        const startText = getComposerText(element).trim().toLowerCase();
+        if (startText.includes(text.trim().toLowerCase().slice(0, 30))) return true;
+
+        // Aggressive Focus Loop
+        for (let i = 0; i < 3; i++) {
+            window.focus();
+            element.focus();
+            element.click();
+            await utils.sleep(100);
+            if (document.activeElement === element) break;
+        }
 
         const isCE = element.isContentEditable || element.getAttribute('contenteditable') === 'true';
 
-        // Best path for IG (contenteditable): execCommand insertText
+        // 0) CLIPBOARD STRATEGY (Hybrid: Real Write + Synthetic Paste)
         try {
-            if (isCE) {
-                document.execCommand('selectAll', false, null);
-                const ok = document.execCommand('insertText', false, text);
-                element.dispatchEvent(new Event('input', { bubbles: true }));
-                if (ok) return true;
+            await navigator.clipboard.writeText(text);
+            element.focus();
+
+            // Try A: Native Paste Command
+            let pasted = false;
+            if (document.execCommand('paste')) {
+                await utils.sleep(80);
+                if (checkVerify(element, text)) pasted = true;
             }
-        } catch {
-            // ignore
+
+            // Try B: Synthetic Paste Event (The "React Hack")
+            // If native paste failed or was blocked, force-feed the event.
+            if (!pasted) {
+                const pasteEvent = new ClipboardEvent('paste', {
+                    bubbles: true,
+                    cancelable: true,
+                    clipboardData: new DataTransfer()
+                });
+                pasteEvent.clipboardData.setData('text/plain', text);
+                element.dispatchEvent(pasteEvent);
+
+                // Often React needs an input event immediately after if it handled the paste
+                await utils.sleep(50);
+                if (checkVerify(element, text)) pasted = true;
+            }
+
+            if (pasted) return true;
+
+        } catch (e) {
+            console.warn('[Crixen] Clipboard/Synthetic paste failed', e);
         }
 
-        // Textarea: use native setter so React sees it
-        try {
-            if (element.tagName === 'TEXTAREA') {
+        const tryMethods = [
+            // 1) execCommand (Standard)
+            () => {
+                if (!isCE) return false;
+                document.execCommand('selectAll', false, null);
+                return document.execCommand('insertText', false, text);
+            },
+            // 2) Event-based Replacement (Resilient)
+            () => {
+                element.dispatchEvent(new InputEvent('beforeinput', { bubbles: true, cancelable: true, inputType: 'insertReplacementText', data: text }));
+                if (isCE) element.innerText = text;
+                else element.value = text;
+                element.dispatchEvent(new InputEvent('input', { bubbles: true, inputType: 'insertReplacementText', data: text }));
+                return true;
+            },
+            // 3) Native setter (Textarea)
+            () => {
+                if (element.tagName !== 'TEXTAREA') return false;
                 const setter = Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value')?.set;
                 if (setter) setter.call(element, text);
                 else element.value = text;
-
+                element.dispatchEvent(new InputEvent('input', { bubbles: true, data: text }));
+                return true;
+            },
+            // 4) Fallback legacy
+            () => {
+                if (isCE) element.innerHTML = text;
+                else element.value = text;
                 element.dispatchEvent(new Event('input', { bubbles: true }));
                 element.dispatchEvent(new Event('change', { bubbles: true }));
                 return true;
             }
-        } catch {
-            // ignore
-        }
+        ];
 
-        // Fallback
-        try {
-            element.textContent = text;
-            element.dispatchEvent(new Event('input', { bubbles: true }));
-            element.dispatchEvent(new Event('change', { bubbles: true }));
-            return true;
-        } catch {
-            // ignore
+        for (const method of tryMethods) {
+            try {
+                if (method()) {
+                    await utils.sleep(150);
+                    if (checkVerify(element, text)) return true;
+                }
+            } catch (e) { /* next */ }
         }
 
         return false;
     };
+
+    function checkVerify(element, text) {
+        const current = getComposerText(element).toLowerCase().replace(/[^a-z0-9]/g, '');
+        const expected = text.toLowerCase().replace(/[^a-z0-9]/g, '').slice(0, 25);
+        return current.includes(expected);
+    }
 
     function getComposerText(el) {
         if (!el) return '';
@@ -84,66 +142,73 @@
     }
 
     async function ensurePostButtonEnabled(inputEl, container) {
-        // Try multiple nudges to get React/IG to enable the Post button
-        for (let i = 0; i < 12; i++) {
+        for (let i = 0; i < 20; i++) {
             const btn = utils.findPostButtonInContainer(container);
-            if (btn && !btn.disabled) return btn;
+            if (btn && !btn.disabled && btn.getAttribute('aria-disabled') !== 'true') {
+                btn.focus();
+                return btn;
+            }
 
             inputEl.focus();
+            if (i % 2 === 0) {
+                inputEl.dispatchEvent(new Event('blur', { bubbles: true }));
+                await utils.sleep(50);
+                inputEl.focus();
+            }
 
-            // Nudge (often wakes IG):
-            // insert space then delete space
             try {
                 document.execCommand('insertText', false, ' ');
-                await utils.sleep(35);
+                await utils.sleep(30);
                 document.execCommand('delete', false, null);
+                inputEl.dispatchEvent(new Event('input', { bubbles: true }));
             } catch {
-                // Fallback: dispatch input
                 inputEl.dispatchEvent(new Event('input', { bubbles: true }));
             }
 
-            await utils.sleep(180);
+            await utils.sleep(200);
         }
-
         return utils.findPostButtonInContainer(container);
     }
 
-    async function verifyPosted({ dialogOrForm, beforeSnapshot, comment }) {
-        // Verification heuristics (in order):
-        // 1) Composer cleared
-        // 2) Dialog text changed
-        // 3) Comment text appears in dialog (best effort)
-        await utils.sleep(900);
+    async function verifyPosted({ dialogOrForm, comment }) {
+        // Stricter verification:
+        // 1) Wait for input to be clear
+        // 2) Verify text appears in document EXCLUDING inputs
 
-        const input = await utils.waitForStrictInput(1200);
-        if (input) {
-            const t = getComposerText(input).trim();
-            if (!t) return true;
-        }
+        const start = Date.now();
+        while (Date.now() - start < 8500) {
+            const input = await utils.waitForStrictInput(600, dialogOrForm);
+            const val = getComposerText(input).trim();
 
-        const afterText = (dialogOrForm?.innerText || '').slice(0, 2000);
-        if (beforeSnapshot && afterText && afterText !== beforeSnapshot) {
-            // It changed - might be posted, might be re-render. Continue to stronger check:
-            if (comment) {
-                const appeared = await waitForTextInContainer(dialogOrForm, comment, 4500);
+            // If input is cleared, it's a strong success signal
+            if (!val) {
+                // Confirm it's actually in the doc now
+                const appeared = await waitForTextInContainer(dialogOrForm, comment, 2000);
                 if (appeared) return true;
-            }
-            // If we can't confirm appearance, still accept change as weak success signal:
-            return true;
-        }
 
-        if (comment) {
-            const appeared = await waitForTextInContainer(dialogOrForm, comment, 4500);
-            if (appeared) return true;
+                // If input is clear but we don't see the text yet, maybe it's still loading
+                await utils.sleep(500);
+                continue;
+            }
+
+            // If text is in doc but NOT only in input, it posted
+            const onlyInInput = utils.isTextOnlyInInput(dialogOrForm, comment);
+            if (!onlyInInput) {
+                const docText = (dialogOrForm?.innerText || '').toLowerCase();
+                const target = comment.trim().toLowerCase().slice(0, 50);
+                if (docText.includes(target)) return true;
+            }
+
+            await utils.sleep(600);
         }
 
         return false;
     }
 
-    utils.postCommentInModal = async function (comment, startUrl) {
+    utils.postCommentInModal = async function (comment, startUrl, providedInput = null) {
         utils.showToast('Posting...', 'info');
 
-        let input = await utils.waitForStrictInput(6500);
+        let input = providedInput || (await utils.waitForStrictInput(6500));
         if (!input) {
             utils.showToast('Input not found. Click the box and try again.', 'warning');
             state.isProcessing = false;
@@ -158,8 +223,11 @@
         await utils.sleep(150);
 
         const typed = await utils.simulateTyping(input, comment);
+
+        // If typed is false, it means we fell back to "Manual Paste Prompt" OR failed completely.
+        // We should NOT proceed to auto-post.
         if (!typed) {
-            utils.showToast('Failed to insert text', 'error');
+            // Toast is already shown by simulateTyping fallback
             state.isProcessing = false;
             return false;
         }
@@ -179,7 +247,17 @@
 
         postBtn.click();
 
-        const ok = await verifyPosted({ dialogOrForm: container, beforeSnapshot, comment });
+        let ok = await verifyPosted({ dialogOrForm: container, comment });
+
+        // RETRY if not cleared (often happens on first click in React)
+        if (!ok && !state.isAutoPilot) {
+            utils.showToast('Retrying post...', 'info');
+            input.focus();
+            await utils.sleep(300);
+            const retryBtn = await ensurePostButtonEnabled(input, container);
+            retryBtn?.click();
+            ok = await verifyPosted({ dialogOrForm: container, comment });
+        }
 
         if (ok) {
             if (utils.isExtensionValid()) {
@@ -263,11 +341,23 @@
                 return false;
             }
 
+            // Evidence toast (v5)
+            utils.showToast(`AI: "${comment.slice(0, 35)}..."`, 'success');
+
             if (utils.isExtensionValid()) {
                 chrome.runtime.sendMessage({ action: 'updateStats', statType: 'generated', style }).catch(() => { });
             }
 
             utils.showToast('Opening comment box...', 'info');
+
+            // FAST PATH: If an input is ALREADY visible in this post (inline), use it!
+            const inlineInput = Array.from(post.querySelectorAll('textarea, [contenteditable="true"]'))
+                .find(el => utils.isElementVisible(el));
+
+            if (inlineInput) {
+                utils.showToast('Using inline box...', 'info');
+                return await utils.postCommentInModal(comment, startUrl, inlineInput);
+            }
 
             const commentIcon = utils.findCommentIcon?.(post);
             if (!commentIcon) {
@@ -278,8 +368,12 @@
             }
 
             commentIcon.click();
+            await utils.sleep(1000); // Wait longer for IG modal/animation
 
-            const input = await utils.waitForStrictInput(6500);
+            // Prefer dialog input if it opened
+            const dialogInput = await utils.waitForStrictInput(3500, document.querySelector('div[role="dialog"]'));
+            const input = dialogInput || (await utils.waitForStrictInput(3000, post));
+
             if (!input) {
                 utils.showToast('Comment input did not open', 'error');
                 post.dataset.aiCommented = 'skipped';
@@ -287,7 +381,7 @@
                 return false;
             }
 
-            return await utils.postCommentInModal(comment, startUrl);
+            return await utils.postCommentInModal(comment, startUrl, input);
         } catch (e) {
             console.error('[Crixen IG] error', e);
             const msg = e?.message || String(e);

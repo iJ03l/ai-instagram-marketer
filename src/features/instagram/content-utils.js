@@ -292,20 +292,32 @@
         return null;
     };
 
-    utils.waitForStrictInput = async function (timeout = 5000) {
+    utils.waitForStrictInput = async function (timeout = 5000, preferredContainer = null) {
         const find = () => {
+            // 1) Try preferred container first (most specific)
+            if (preferredContainer) {
+                const within = preferredContainer.querySelectorAll('textarea, [contenteditable="true"]');
+                for (const el of within) {
+                    if (utils.isElementVisible(el)) return el;
+                }
+            }
+
+            // 2) Try active element (if user already clicked in)
             const active = document.activeElement;
             if (active) {
                 const tag = active.tagName?.toLowerCase();
                 if (tag === 'textarea' || active.getAttribute('contenteditable') === 'true' || active.isContentEditable) {
-                    return active;
+                    // Ensure it's not a generic button or irrelevant element
+                    if (utils.isElementVisible(active)) return active;
                 }
             }
 
+            // 3) Try modal/dialog
             const inDialogs = document.querySelectorAll('div[role="dialog"] textarea, div[role="dialog"] [contenteditable="true"]');
             for (const el of inDialogs) if (utils.isElementVisible(el)) return el;
 
-            const all = document.querySelectorAll('textarea, [contenteditable="true"]');
+            // 4) Try generic fallback
+            const all = document.querySelectorAll('article textarea, article [contenteditable="true"], main textarea, main [contenteditable="true"]');
             for (const el of all) if (utils.isElementVisible(el)) return el;
 
             return null;
@@ -314,8 +326,34 @@
         const existing = find();
         if (existing) return existing;
 
-        // wait using polling (less fragile than MutationObserver here)
         return utils.waitFor(find, { timeoutMs: timeout, intervalMs: 120 });
+    };
+
+    utils.isTextOnlyInInput = function (container, text) {
+        if (!container || !text) return false;
+        const target = text.trim().toLowerCase().slice(0, 100);
+        if (!target) return false;
+
+        const inputs = Array.from(container.querySelectorAll('textarea, [contenteditable="true"]'));
+        const docText = (container.innerText || '').toLowerCase();
+
+        // Find all occurrences of target in docText
+        let docMatches = 0;
+        let pos = docText.indexOf(target);
+        while (pos !== -1) {
+            docMatches++;
+            pos = docText.indexOf(target, pos + target.length);
+        }
+
+        // Subtract matches found inside inputs
+        let inputMatches = 0;
+        for (const input of inputs) {
+            const val = (input.value || input.textContent || '').toLowerCase();
+            if (val.includes(target)) inputMatches++;
+        }
+
+        // If docMatches matches inputMatches, the text is ONLY in the inputs
+        return docMatches > 0 && docMatches <= inputMatches;
     };
 
     utils.findPostButtonInContainer = function (container) {
