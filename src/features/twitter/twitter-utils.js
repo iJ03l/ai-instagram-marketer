@@ -10,6 +10,7 @@
         currentTweet: null,
         settings: null,
         isProcessing: false,
+        handledTweets: new Set(),
 
         // autopilot
         isAutoPilot: false,
@@ -145,6 +146,23 @@
         setTimeout(() => toast.remove(), 9000);
     };
 
+    // Helper to find current user handle (e.g. "@username")
+    utils.getCurrentUserHandle = function () {
+        const switcher = document.querySelector('[data-testid="SideNav_AccountSwitcher_Button"]');
+        const handleEl = switcher?.querySelector('div[dir="ltr"] > span');
+        const handle = handleEl?.textContent?.trim();
+        if (handle && handle.startsWith('@')) return handle.toLowerCase();
+
+        // Fallback: search profile link
+        const profileLink = document.querySelector('a[data-testid="AppTabBar_Profile_Link"]');
+        const href = profileLink?.getAttribute('href');
+        if (href) {
+            const h = href.replace('/', '').toLowerCase();
+            return `@${h}`;
+        }
+        return null;
+    };
+
     // Pick best visible tweet for autopilot
     utils.pickBestVisibleTweet = function () {
         const tweets = Array.from(document.querySelectorAll('article[data-testid="tweet"]'));
@@ -152,6 +170,13 @@
 
         for (const t of tweets) {
             if (!utils.isElementVisible(t)) continue;
+
+            // Generate a semi-stable ID for the tweet
+            const text = t.querySelector('[data-testid="tweetText"]')?.textContent || '';
+            const author = t.querySelector('[data-testid="User-Name"]')?.textContent || '';
+            const tweetId = `${author}:${text.slice(0, 60)}`;
+
+            if (state.handledTweets.has(tweetId)) continue;
             if (t.dataset.crixenAutopilot === 'done') continue;
             if (t.dataset.crixenAutopilot === 'skipped') continue;
 

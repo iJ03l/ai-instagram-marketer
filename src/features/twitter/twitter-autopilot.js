@@ -98,16 +98,37 @@
             if (signal.aborted || !state.isAutoPilot) break;
 
             if (ok) {
+                // Record as done (content-based ID)
+                const text = target.querySelector('[data-testid="tweetText"]')?.textContent || '';
+                const author = target.querySelector('[data-testid="User-Name"]')?.textContent || '';
+                state.handledTweets.add(`${author}:${text.slice(0, 60)}`);
+
                 target.dataset.crixenAutopilot = 'done';
                 state.autoCount += 1;
                 utils.showToast(`Auto: ${state.autoCount}/${state.autoLimit}`, 'info');
+
+                // Detection for "refreshing to top"
+                await utils.sleep(800);
+                if (window.scrollY < 120) {
+                    // Page jumped to top (X does this sometimes)
+                    state.autoPhase = 'repositioning';
+                    broadcast();
+                    window.scrollBy({ top: 900, behavior: 'smooth' });
+                    await utils.sleep(1200);
+                } else {
+                    // Normal behavior, just move to next
+                    state.autoPhase = 'scrolling';
+                    broadcast();
+                    window.scrollBy({ top: 550, behavior: 'smooth' });
+                    await utils.sleep(800);
+                }
             } else {
                 target.dataset.crixenAutopilot = 'skipped';
             }
 
             state.autoPhase = 'cooldown';
             broadcast();
-            if (!(await humanDelay(3200, 6200, signal))) break;
+            if (!(await humanDelay(2500, 4500, signal))) break;
         }
 
         if (!signal.aborted && state.autoCount >= state.autoLimit) utils.showToast('Task complete', 'success');

@@ -48,7 +48,7 @@
         return null;
     }
 
-    async function waitForTwitterInput(timeoutMs = 6000) {
+    async function waitForTwitterInput(timeoutMs = 6000, context = document) {
         const selectors = [
             '[data-testid="tweetTextarea_0"]',
             '[data-testid="tweetTextarea_1"]',
@@ -59,7 +59,7 @@
         const start = Date.now();
         while (Date.now() - start < timeoutMs) {
             for (const sel of selectors) {
-                const el = document.querySelector(sel);
+                const el = context.querySelector(sel);
                 if (el && utils.isElementVisible(el) && (el.isContentEditable || el.getAttribute('contenteditable') === 'true')) {
                     return el;
                 }
@@ -69,7 +69,7 @@
         return null;
     }
 
-    async function clickTwitterPostButton() {
+    async function clickTwitterPostButton(context = document) {
         await utils.sleep(250);
 
         const selectors = [
@@ -78,14 +78,14 @@
         ];
 
         for (const sel of selectors) {
-            const btn = document.querySelector(sel);
+            const btn = context.querySelector(sel);
             if (btn && utils.isElementVisible(btn) && btn.getAttribute('aria-disabled') !== 'true') {
                 btn.click();
                 return true;
             }
         }
 
-        const btns = Array.from(document.querySelectorAll('div[role="button"],button'));
+        const btns = Array.from(context.querySelectorAll('div[role="button"],button'));
         const found = btns.find((b) => {
             const t = (b.textContent || '').trim().toLowerCase();
             return (t === 'post' || t === 'reply' || t === 'tweet') && utils.isElementVisible(b) && b.getAttribute('aria-disabled') !== 'true';
@@ -138,7 +138,8 @@
             replyBtn.click();
 
             utils.showToast('Opening reply...', 'info');
-            const input = await waitForTwitterInput(7000);
+            const dialog = await waitForTwitterComposerRoot(4000);
+            const input = await waitForTwitterInput(7000, dialog || document);
             if (!input) throw new Error('Reply composer did not open');
 
             await utils.loadSettings();
@@ -167,7 +168,7 @@
             if (!typed) throw new Error('Failed to type');
 
             utils.showToast('Posting...', 'info');
-            const posted = await clickTwitterPostButton();
+            const posted = await clickTwitterPostButton(dialog || document);
             if (!posted) throw new Error('Could not click post button');
 
             utils.showToast('Posted', 'success');
