@@ -878,7 +878,6 @@ async function generateComment(
     const promise = (async () => {
         const raw = await callCrixenGenerate({ token, payload });
         const cleaned = postProcessContent(raw, p);
-        console.log(`[Crixen BG] Generated ${p} ${a}:`, (cleaned || '').slice(0, 100));
         cacheSet(dedupeKey, cleaned);
         return cleaned;
     })().finally(() => {
